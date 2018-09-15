@@ -112,7 +112,7 @@ def _slice_at_axis(axis, sl, trailing_slices):
     (slice(None, None, None), slice(None, 3, -1), slice(None, None, None))
     """
     slice_tup = (slice(None),)
-    return slice_tup * axis + (sl,) + trailing_slices[axis+1:]
+    return trailing_slices[:axis] + (sl,) + slice_tup * (len(trailing_slices) - axis - 1)
 
 
 def _pad_simple(array, pad_width, fill_value=None):
