@@ -82,32 +82,37 @@ def _round_if_needed(arr, dtype):
         arr.round(out=arr)
 
 
-def _slice_at_axis(shape, axis, sl):
+def _slice_at_axis(axis, sl, trailing_slices):
     """
     Construct tuple of slices to slice an array in the given dimension.
 
+    All dimensions up to axis are completely selected. Dimenisons after
+    axis are sliced with trailing_slices ensuring that every block is only
+    selected once.
+
     Parameters
     ----------
-    shape : tuple
-        Shape of the array to slice as returned by its `shape` attribute.
     axis : int
         The axis to which `sl` is applied. All other dimensions are left
         "unsliced".
     sl : slice
         The slice for the given dimension.
+    trailing_slices : tuple of slices
+        The slices to append after axis. This tuple is sliced like
+        `trailing_slices[axis+1:]`.
 
     Returns
     -------
     sl : tuple of slices
-        A tuple with slices matching `shape` in length.
+        A tuple with slices the same length as `trailing_slices`.
 
     Examples
     --------
-    >>> _slice_at_axis((3, 4, 5), 1, slice(None, 3, -1))
+    >>> _slice_at_axis(1, slice(None, 3, -1), (slice(None), ) * 3)
     (slice(None, None, None), slice(None, 3, -1), slice(None, None, None))
     """
     slice_tup = (slice(None),)
-    return slice_tup * axis + (sl,) + slice_tup * (len(shape) - axis - 1)
+    return slice_tup * axis + (sl,) + trailing_slices[axis+1:]
 
 
 def _pad_simple(array, pad_width, fill_value=None):
@@ -150,7 +155,7 @@ def _pad_simple(array, pad_width, fill_value=None):
     return padded, old_area
 
 
-def _set_pad_area(padded, axis, index_pair, value_pair):
+def _set_pad_area(padded, axis, index_pair, value_pair, trailing_slices):
     """
     Set empty-padded area in given dimension.
 
@@ -161,29 +166,29 @@ def _set_pad_area(padded, axis, index_pair, value_pair):
     axis : int
         Dimension with the pad area to set.
     index_pair : (int, int)
-        Pair of indices that mark the end (or start) of the pad area on both 
+        Pair of indices that mark the end (or start) of the pad area on both
         sides in the given dimension.
     value_pair : tuple of scalars or ndarrays
-        Values inserted into the pad area on each side. It must match or be 
+        Values inserted into the pad area on each side. It must match or be
         broadcastable to the shape of `arr`.
     """
     if index_pair[0] > 0:
         # Set pad values on the left
         left_slice = _slice_at_axis(
-            padded.shape, axis, slice(None, index_pair[0]))
+            axis, slice(None, index_pair[0]), trailing_slices)
         padded[left_slice] = value_pair[0]
 
     if index_pair[1] > 0:
         # Set pad values on the right
         right_slice = _slice_at_axis(
-            padded.shape, axis, slice(-index_pair[1], None))
+            axis, slice(-index_pair[1], None), trailing_slices)
         padded[right_slice] = value_pair[1]
 
 
-def _get_edges(padded, axis, index_pair):
+def _get_edges(padded, axis, index_pair, trailing_slices):
     """
     Retrieve edge values from empty-padded array in given dimension.
-    
+
     Parameters
     ----------
     padded : ndarray
@@ -201,14 +206,14 @@ def _get_edges(padded, axis, index_pair):
     """
     if index_pair[0] > 0:
         left_slice = _slice_at_axis(
-            padded.shape, axis, slice(index_pair[0], index_pair[0] + 1))
+            axis, slice(index_pair[0], index_pair[0] + 1), trailing_slices)
         left_edge = padded[left_slice]
     else:
         left_edge = np.array([], dtype=padded.dtype)
 
     if index_pair[1] > 0:
         right_slice = _slice_at_axis(
-            padded.shape, axis, slice(-index_pair[1] - 1, -index_pair[1]))
+            axis, slice(-index_pair[1] - 1, -index_pair[1]), trailing_slices)
         right_edge = padded[right_slice]
     else:
         right_edge = np.array([], dtype=padded.dtype)
@@ -216,7 +221,7 @@ def _get_edges(padded, axis, index_pair):
     return left_edge, right_edge
 
 
-def _get_linear_ramps(padded, axis, index_pair, end_value_pair):
+def _get_linear_ramps(padded, axis, index_pair, end_value_pair, trailing_slices):
     """
     Construct linear ramps for empty-padded array in given dimension.
 
@@ -238,7 +243,7 @@ def _get_linear_ramps(padded, axis, index_pair, end_value_pair):
     left_ramp, right_ramp : ndarray
         Linear ramps to set on both sides of `padded`.
     """
-    edge_pair = _get_edges(padded, axis, index_pair)
+    edge_pair = _get_edges(padded, axis, index_pair, trailing_slices)
 
     if index_pair[0] > 0:
         left_ramp = _linear_ramp(
@@ -261,7 +266,7 @@ def _get_linear_ramps(padded, axis, index_pair, end_value_pair):
     return left_ramp, right_ramp
 
 
-def _get_stats(padded, axis, index_pair, length_pair, stat_func):
+def _get_stats(padded, axis, index_pair, length_pair, stat_func, trailing_slices):
     """
     Calculate statistic for the empty-padded array in given dimnsion.
 
@@ -295,8 +300,9 @@ def _get_stats(padded, axis, index_pair, length_pair, stat_func):
         else:
             left_length = max_length
         left_slice = _slice_at_axis(
-            padded.shape, axis,
-            slice(index_pair[0], index_pair[0] + left_length)
+            axis,
+            slice(index_pair[0], index_pair[0] + left_length),
+            trailing_slices
         )
         left_chunk = padded[left_slice]
         left_stat = stat_func(left_chunk, axis=axis, keepdims=True)
@@ -310,8 +316,9 @@ def _get_stats(padded, axis, index_pair, length_pair, stat_func):
         else:
             right_length = max_length
         right_slice = _slice_at_axis(
-            padded.shape, axis,
-            slice(-index_pair[1] - right_length, -index_pair[1])
+            axis,
+            slice(-index_pair[1] - right_length, -index_pair[1]),
+            trailing_slices
         )
         right_chunk = padded[right_slice]
         right_stat = stat_func(right_chunk, axis=axis, keepdims=True)
@@ -322,7 +329,7 @@ def _get_stats(padded, axis, index_pair, length_pair, stat_func):
     return left_stat, right_stat
 
 
-def _set_reflect_both(padded, axis, index_pair, method, include_edge=False):
+def _set_reflect_both(padded, axis, index_pair, method, include_edge, trailing_slices):
     """
     Pad `axis` of `arr` with reflection.
 
@@ -369,25 +376,26 @@ def _set_reflect_both(padded, axis, index_pair, method, include_edge=False):
         # pad area
         left_index = left_pad - offset
         left_slice = _slice_at_axis(
-            padded.shape, axis,
-            slice(left_index + min(period, left_pad), left_index, -1)
+            axis,
+            slice(left_index + min(period, left_pad), left_index, -1),
+            trailing_slices
         )
         left_chunk = padded[left_slice]
 
         if method == "odd":
             edge_slice = _slice_at_axis(
-                padded.shape, axis, slice(left_pad, left_pad + 1)
-            )
+                axis, slice(left_pad, left_pad + 1), trailing_slices)
             left_chunk = 2 * padded[edge_slice] - left_chunk
 
         if left_pad > period:
             # Chunk is smaller than pad area
             left_pad -= period
             pad_area = _slice_at_axis(
-                padded.shape, axis, slice(left_pad, left_pad + period))
+                axis, slice(left_pad, left_pad + period), trailing_slices)
         else:
             # Chunk matches pad area
-            pad_area = _slice_at_axis(padded.shape, axis, slice(None, left_pad))
+            pad_area = _slice_at_axis(
+                axis, slice(None, left_pad), trailing_slices)
             left_pad = 0
         padded[pad_area] = left_chunk
 
@@ -398,32 +406,34 @@ def _set_reflect_both(padded, axis, index_pair, method, include_edge=False):
         # pad area
         right_index = -right_pad + offset - 2
         right_slice = _slice_at_axis(
-            padded.shape, axis,
-            slice(right_index, right_index - min(period, right_pad), -1)
+            axis,
+            slice(right_index, right_index - min(period, right_pad), -1),
+            trailing_slices
         )
         right_chunk = padded[right_slice]
 
         if method == "odd":
             edge_slice = _slice_at_axis(
-                padded.shape, axis, slice(-right_pad - 1, -right_pad))
+                axis, slice(-right_pad - 1, -right_pad), trailing_slices)
             right_chunk = 2 * padded[edge_slice] - right_chunk
 
         if right_pad > period:
             # Chunk is smaller than pad area
             right_pad -= period
             pad_area = _slice_at_axis(
-                padded.shape, axis, slice(-right_pad - period, -right_pad))
+                axis, slice(-right_pad - period, -right_pad), trailing_slices)
 
         else:
             # Chunk matches pad area
-            pad_area = _slice_at_axis(padded.shape, axis, slice(-right_pad, None))
+            pad_area = _slice_at_axis(
+                axis, slice(-right_pad, None), trailing_slices)
             right_pad = 0
         padded[pad_area] = right_chunk
 
     return left_pad, right_pad
 
 
-def _set_wrap_both(padded, axis, index_pair):
+def _set_wrap_both(padded, axis, index_pair, trailing_slices):
     """
     Pad `axis` of `arr` with wrapped values.
 
@@ -468,19 +478,22 @@ def _set_wrap_both(padded, axis, index_pair):
         # Use min(period, left_pad) to ensure that chunk is not larger than
         # pad area
         right_slice = _slice_at_axis(
-            padded.shape, axis,
-            slice(-right_pad - min(period, left_pad), -right_pad)
+            axis,
+            slice(-right_pad - min(period, left_pad), -right_pad),
+            trailing_slices
         )
         right_chunk = padded[right_slice]
 
         if left_pad > period:
             # Chunk is smaller than pad area
             pad_area = _slice_at_axis(
-                padded.shape, axis, slice(left_pad - period, left_pad))
+                axis, slice(left_pad - period, left_pad),
+                trailing_slices)
             new_left_pad = left_pad - period
         else:
             # Chunk matches pad area
-            pad_area = _slice_at_axis(padded.shape, axis, slice(None, left_pad))
+            pad_area = _slice_at_axis(
+                axis, slice(None, left_pad), trailing_slices)
         padded[pad_area] = right_chunk
 
     if right_pad > 0:
@@ -489,19 +502,22 @@ def _set_wrap_both(padded, axis, index_pair):
         # Use min(period, right_pad) to ensure that chunk is not larger than
         # pad area
         left_slice = _slice_at_axis(
-            padded.shape, axis,
-            slice(left_pad, left_pad + min(period, right_pad))
+            axis,
+            slice(left_pad, left_pad + min(period, right_pad)),
+            trailing_slices
         )
         left_chunk = padded[left_slice]
 
         if right_pad > period:
             # Chunk is smaller than pad area
             pad_area = _slice_at_axis(
-                padded.shape, axis, slice(-right_pad, -right_pad + period))
+                axis, slice(-right_pad, -right_pad + period),
+                trailing_slices)
             new_right_pad = right_pad - period
         else:
             # Chunk matches pad area
-            pad_area = _slice_at_axis(padded.shape, axis, slice(-right_pad, None))
+            pad_area = _slice_at_axis(
+                axis, slice(-right_pad, None), trailing_slices)
         padded[pad_area] = left_chunk
 
     return new_left_pad, new_right_pad
@@ -829,6 +845,10 @@ def pad(array, pad_width, mode, **kwargs):
     # Create array with final shape and original values
     # (padded area is undefined)
     padded, _ = _pad_simple(array, pad_width)
+    # Cache the computation of trailing_slices allowing the selection
+    # of every edge and corner exactly once
+    trailing_slices = tuple(slice(before, -after if after else None)
+                            for before, after in pad_width)
     # And prepare iteration over all dimensions
     # (zipping may be more readable than using enumerate)
     axes = range(padded.ndim)
@@ -853,27 +873,27 @@ def pad(array, pad_width, mode, **kwargs):
         values = kwargs.get("constant_values", 0)
         values = _as_pairs(values, padded.ndim, assert_number=True)
         for axis, index_pair, value_pair in zip(axes, pad_width, values):
-            _set_pad_area(padded, axis, index_pair, value_pair)
+            _set_pad_area(padded, axis, index_pair, value_pair, trailing_slices)
 
     elif mode == "edge":
         for axis, index_pair in zip(axes, pad_width):
-            edge_pair = _get_edges(padded, axis, index_pair)
-            _set_pad_area(padded, axis, index_pair, edge_pair)
+            edge_pair = _get_edges(padded, axis, index_pair, trailing_slices)
+            _set_pad_area(padded, axis, index_pair, edge_pair, trailing_slices)
 
     elif mode == "linear_ramp":
         end_values = kwargs.get("end_values", 0)
         end_values = _as_pairs(end_values, padded.ndim, assert_number=True)
         for axis, index_pair, value_pair in zip(axes, pad_width, end_values):
-            ramp_pair = _get_linear_ramps(padded, axis, index_pair, value_pair)
-            _set_pad_area(padded, axis, index_pair, ramp_pair)
+            ramp_pair = _get_linear_ramps(padded, axis, index_pair, value_pair, trailing_slices)
+            _set_pad_area(padded, axis, index_pair, ramp_pair, trailing_slices)
 
     elif mode in stat_functions:
         func = stat_functions[mode]
         length = kwargs.get("stat_length", None)
         length = _as_pairs(length, padded.ndim, as_index=True)
         for axis, index_pair, length_pair in zip(axes, pad_width, length):
-            stat_pair = _get_stats(padded, axis, index_pair, length_pair, func)
-            _set_pad_area(padded, axis, index_pair, stat_pair)
+            stat_pair = _get_stats(padded, axis, index_pair, length_pair, func, trailing_slices)
+            _set_pad_area(padded, axis, index_pair, stat_pair, trailing_slices)
 
     elif mode in {"reflect", "symmetric"}:
         method = kwargs.get("reflect_type", "even")
@@ -882,8 +902,8 @@ def pad(array, pad_width, mode, **kwargs):
             if array.shape[axis] == 1 and (left_index > 0 or right_index > 0):
                 # Extending singleton dimension for 'reflect' is legacy
                 # behavior; it really should raise an error.
-                edge_pair = _get_edges(padded, axis, (left_index, right_index))
-                _set_pad_area(padded, axis, (left_index, right_index), edge_pair)
+                edge_pair = _get_edges(padded, axis, (left_index, right_index), trailing_slices)
+                _set_pad_area(padded, axis, (left_index, right_index), edge_pair, trailing_slices)
                 continue
 
             while left_index > 0 or right_index > 0:
@@ -892,7 +912,7 @@ def pad(array, pad_width, mode, **kwargs):
                 # the length of the original values in the current dimension.
                 left_index, right_index = _set_reflect_both(
                     padded, axis, (left_index, right_index),
-                    method, include_edge
+                    method, include_edge, trailing_slices
                 )
 
     elif mode == "wrap":
@@ -902,7 +922,8 @@ def pad(array, pad_width, mode, **kwargs):
                 # values. This is necessary if the pad area is larger than
                 # the length of the original values in the current dimension.
                 left_index, right_index = _set_wrap_both(
-                    padded, axis, (left_index, right_index))
+                    padded, axis, (left_index, right_index),
+                    trailing_slices)
 
     elif mode == "empty":
         pass  # Do nothing as padded is already prepared
