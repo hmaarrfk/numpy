@@ -521,11 +521,11 @@ def _block_info_recursion(arrays, list_ndim, result_ndim, depth=0):
         # will require the matching offset (computed above with accumulate)
         slice_prefixes = _concatenate_shapes_as_slices(shapes, axis)
         # Prepend the slice prefix and flatten the slices
-        slices = ((slice_prefix,) + the_slice
+        slices = [(slice_prefix,) + the_slice
                   for slice_prefix, inner_slices in zip(slice_prefixes, slices)
-                  for the_slice in inner_slices)
+                  for the_slice in inner_slices]
         # Flatten the arrays
-        arrays = itertools.chain.from_iterable(arrays)
+        arrays = list(itertools.chain.from_iterable(arrays))
         return shape, slices, arrays
     else:
         # Base case
@@ -695,7 +695,6 @@ def block(arrays):
     result_ndim = max(arr_ndim, list_ndim)
     shape, slices, arrays = _block_info_recursion(arrays,
                                                   list_ndim, result_ndim)
-    arrays = list(arrays)
     dtype = _nx.result_type(*arrays)
     result = _nx.empty(shape=shape, dtype=dtype)
     for the_slice, the_arr in zip(slices, arrays):
