@@ -1,5 +1,8 @@
 from __future__ import division, absolute_import, print_function
 
+from itertools import chain
+
+
 __all__ = ['atleast_1d', 'atleast_2d', 'atleast_3d', 'block', 'hstack',
            'stack', 'vstack']
 
@@ -7,7 +10,6 @@ __all__ = ['atleast_1d', 'atleast_2d', 'atleast_3d', 'block', 'hstack',
 from . import numeric as _nx
 from .numeric import array, asanyarray, newaxis
 from .multiarray import normalize_axis_index
-from ._internal import recursive
 
 def atleast_1d(*arys):
     """
@@ -438,30 +440,90 @@ def _block_check_depths_match(arrays, parent_index=[]):
         return parent_index, _nx.ndim(arrays)
 
 
-def _block(arrays, max_depth, result_ndim):
-    """
-    Internal implementation of block. `arrays` is the argument passed to
-    block. `max_depth` is the depth of nested lists within `arrays` and
-    `result_ndim` is the greatest of the dimensions of the arrays in
-    `arrays` and the depth of the lists in `arrays` (see block docstring
-    for details).
-    """
-    def atleast_nd(a, ndim):
-        # Ensures `a` has at least `ndim` dimensions by prepending
-        # ones to `a.shape` as necessary
-        return array(a, ndmin=ndim, copy=False, subok=True)
+def _concatenate_shapes(shapes, axis):
+    """Given array shapes, return the resulting shape that would occur
+    after array concatenation.
 
-    @recursive
-    def block_recursion(self, arrays, depth=0):
-        if depth < max_depth:
-            arrs = [self(arr, depth+1) for arr in arrays]
-            return _nx.concatenate(arrs, axis=-(max_depth-depth))
-        else:
-            # We've 'bottomed out' - arrays is either a scalar or an array
-            # type(arrays) is not list
-            return atleast_nd(arrays, result_ndim)
+    concatenate(arrs, axis).shape == _concatenate_shapes([a.shape for a in arrs], axis)
+    """
+    # Take a shape, any shape
+    first_shape = shapes[0]
+    for shape in shapes[1:]:
+        if (shape[:axis] != first_shape[:axis] or
+                shape[axis+1:] != first_shape[axis+1:]):
+            raise ValueError('Mismatched array shapes in block.')
+    shape_on_dim = sum(shape[axis] for shape in shapes)
+    return first_shape[:axis] + (shape_on_dim,) + first_shape[axis+1:]
 
-    return block_recursion(arrays)
+
+def _atleast_nd(a, ndim):
+    # Ensures `a` has at least `ndim` dimensions by prepending
+    # ones to `a.shape` as necessary
+    return array(a, ndmin=ndim, copy=False, subok=True)
+
+
+def _accumulate(values):
+    # Helper function because Python 2.7 doesn't have
+    # itertools.accumulate
+    value = 0
+    accumulated = []
+    for v in values:
+        value += v
+        accumulated.append(value)
+
+    return tuple(accumulated)
+
+
+def _block_info_recursion(arrays, list_ndim, result_ndim, depth=0):
+    """Form required information to block the arrays using a flat iterator.
+
+    Returns
+    -------
+    shape: tuple of ints
+        the resulting shape of the final array
+    region_slices: iterable of indices
+        slices into the full array required for assignment
+    region_data: iterable of ndarray
+        the data to assign to each slice of the full array
+
+    """
+    if depth < list_ndim:
+        axis = result_ndim - list_ndim + depth
+        info = [_block_info_recursion(arr, list_ndim, result_ndim, depth + 1)
+                for arr in arrays]
+        shapes, slices, arrays = zip(*info)
+        # Compute the offset for each array
+        offsets = (0,) + tuple(_accumulate(shape[axis]
+                                           for shape in shapes[:-1]))
+        # `slices` and `arrays` contain lists that have the information
+        # from the inner lists provided to the concatenation function.
+        # To create the correct offset, one needs to prepend the appropriate
+        # offset to each of them. Each list (containing one or more arrays)
+        # will require the matching offset (computed above with accumulate)
+        slices = [
+            [
+                (slice(offset, offset+shape[axis]),) + the_slice
+                for the_slice in inner_slices
+            ]
+            for offset, shape, inner_slices in zip(offsets, shapes, slices)
+        ]
+        shape = _concatenate_shapes(shapes, axis)
+
+        # Flatten the slices and arrays
+        slices = list(chain.from_iterable(slices))
+        arrays = list(chain.from_iterable(arrays))
+        if depth == 0:
+            # To correctly slice into the right dimension,
+            # prepend indices to the slice.
+            slices = [(Ellipsis,) + the_slice for the_slice in slices]
+        return shape, slices, arrays
+    else:
+        # Base case
+        # broadcast the array to the total number of dimensions
+        arr = _atleast_nd(arrays, result_ndim)
+        # Return the slice and the array inside a list to be consistent with
+        # the recursive case.
+        return arr.shape, [()], [arr]
 
 
 def block(arrays):
@@ -620,4 +682,11 @@ def block(arrays):
                 _block_format_index(bottom_index)
             )
         )
-    return _block(arrays, list_ndim, max(arr_ndim, list_ndim))
+    result_ndim = max(arr_ndim, list_ndim)
+    shape, slices, arrays = _block_info_recursion(
+        arrays, list_ndim, result_ndim)
+    dtype = _nx.result_type(*arrays)
+    result = _nx.empty(shape=shape, dtype=dtype)
+    for the_slice, the_arr in zip(slices, arrays):
+        result[the_slice] = the_arr
+    return result
