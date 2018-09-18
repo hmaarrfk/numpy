@@ -414,7 +414,7 @@ def _block_check_depths_match(arrays, parent_index=[]):
         info = [_block_check_depths_match(arr, parent_index + [i])
                 for i, arr in enumerate(arrays)]
 
-        array_indices, shapes, slices, arrays = zip(*info)
+        array_indices, shapes, slices, arrays, ndims = zip(*info)
         first_index = array_indices[0]
         for index in array_indices[1:]:
             if len(index) != len(first_index):
@@ -435,7 +435,7 @@ def _block_check_depths_match(arrays, parent_index=[]):
 
         arrays = list(itertools.chain.from_iterable(arrays))
         list_ndim = len(first_index)
-        arr_max_dims = max(arr.ndim for arr in arrays)
+        arr_max_dims = max(ndims)
         result_ndim = max(list_ndim, arr_max_dims)
         depth = len(parent_index)
         axis = result_ndim - list_ndim + depth
@@ -448,19 +448,19 @@ def _block_check_depths_match(arrays, parent_index=[]):
                   for slice_prefix, inner_slices in zip(slice_prefixes, slices)
                   for the_slice in inner_slices]
 
-        return first_index, shape, slices, arrays
+        return first_index, shape, slices, arrays, arr_max_dims
     elif type(arrays) is list and len(arrays) == 0:
         # We've 'bottomed out' on an empty list
         # It doesn't mater what we return for shape, slices, arrays
         # they are all ignored because of the flag [None] at the
         # end of the parent_index
-        return parent_index + [None], None, None, None
+        return parent_index + [None], None, None, None, None
     else:
         # We've 'bottomed out' - arrays is either a scalar or an array
         arr = array(arrays, copy=False, subok=True)
         # Return the slice and the array inside a list to be consistent with
         # the recursive case.
-        return parent_index, arr.shape, [()], [arr]
+        return parent_index, arr.shape, [()], [arr], arr.ndim
 
 
 def _concatenate_shapes(shapes, axis, ndim=None):
@@ -708,7 +708,7 @@ def block(arrays):
 
 
     """
-    bottom_index, shape, slices, arrs = _block_check_depths_match(arrays)
+    bottom_index, shape, slices, arrs, *_ = _block_check_depths_match(arrays)
     if bottom_index and bottom_index[-1] is None:
         raise ValueError(
             'List at {} cannot be empty'.format(
