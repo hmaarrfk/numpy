@@ -437,22 +437,6 @@ def _block_check_depths_match(arrays, parent_index=[]):
         return parent_index, _nx.ndim(arrays)
 
 
-def _concatenate_shapes(shapes, axis):
-    """Given array shapes, return the resulting shape that would occur
-    after array concatenation.
-
-    concatenate(arrs, axis).shape == _concatenate_shapes([a.shape for a in arrs], axis)
-    """
-    # Take a shape, any shape
-    first_shape = shapes[0]
-    for shape in shapes[1:]:
-        if (shape[:axis] != first_shape[:axis] or
-                shape[axis+1:] != first_shape[axis+1:]):
-            raise ValueError('Mismatched array shapes in block.')
-    shape_on_dim = sum(shape[axis] for shape in shapes)
-    return first_shape[:axis] + (shape_on_dim,) + first_shape[axis+1:]
-
-
 def _atleast_nd(a, ndim):
     # Ensures `a` has at least `ndim` dimensions by prepending
     # ones to `a.shape` as necessary
@@ -471,28 +455,47 @@ def _accumulate(values):
     return tuple(accumulated)
 
 
-def _concatenate_shapes_as_slices(shapes, axis):
+def _concatenate_shapes(shapes, axis):
     """
-    Produce the slices that match the destination each array would end up
-    along axis.
+    Produce the final shape and slices that match the destination
+    where arrays of shape shapes would end up along axis.
 
     For the following situation::
 
         ret = concatenate([a, b, c], axis=0)
         sl_a, sl_b, sl_c = concatenate_slices([a, b, c], axis=0)
 
-    The result will be that ``ret[sl_a] == a``, ``ret[sl_b] == b``, and
-    ``ret[sl_c] == c``.
+    The result will be that
+      - ``ret[sl_a] == a``, ``ret[sl_b] == b``, and ``ret[sl_c] == c``
+      - ``ret.shape == shape``
+
     Similar properties hold for other values of ``axis``.
+
+    Returns
+    -------
+    shape: tuple of int
+        Resulting shape after concatenation
+    slices: list of slices
+        The list of slices `[sl_a, ..., sl_c]` as decribed above.
 
     See Also
     --------
         concatenate : Join a sequence of arrays together.
 
     """
+    # Take a shape, any shape
+    first_shape = shapes[0]
+    for shape in shapes[1:]:
+        if (shape[:axis] != first_shape[:axis] or
+                shape[axis+1:] != first_shape[axis+1:]):
+            raise ValueError('Mismatched array shapes in block.')
+    shape_on_dim = sum(shape[axis] for shape in shapes)
+    final_shape = first_shape[:axis] + (shape_on_dim,) + first_shape[axis+1:]
+
     offsets = (0,) + tuple(_accumulate(shape[axis] for shape in shapes[:-1]))
-    return [slice(offset, offset + shape[axis])
-            for offset, shape in zip(offsets, shapes)]
+    slices = [slice(offset, offset + shape[axis])
+              for offset, shape in zip(offsets, shapes)]
+    return final_shape, slices
 
 
 def _block_info_recursion(arrays, list_ndim, result_ndim, depth=0):
@@ -514,14 +517,14 @@ def _block_info_recursion(arrays, list_ndim, result_ndim, depth=0):
                 for arr in arrays]
         shapes, slices, arrays = zip(*info)
         # Compute the resulting shape
-        shape = _concatenate_shapes(shapes, axis)
+        shape, slice_prefixes = _concatenate_shapes(shapes, axis)
 
         # `slices` and `arrays` contain lists that have the information
         # from the inner lists provided to the concatenation function.
         # To create the correct offset, one needs to prepend the appropriate
         # offset to each of them. Each list (containing one or more arrays)
         # will require the matching offset (computed above with accumulate)
-        slice_prefixes = _concatenate_shapes_as_slices(shapes, axis)
+
         # Prepend the slice prefix and flatten the slices
         slices = [(slice_prefix,) + the_slice
                   for slice_prefix, inner_slices in zip(slice_prefixes, slices)
