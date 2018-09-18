@@ -1,5 +1,7 @@
 from __future__ import division, absolute_import, print_function
 
+import itertools
+
 __all__ = ['atleast_1d', 'atleast_2d', 'atleast_3d', 'block', 'hstack',
            'stack', 'vstack']
 
@@ -485,10 +487,6 @@ def _concatenate_shapes_as_slices(shapes, axis):
     ``ret[sl_c] == c``.
     Similar properties hold for other values of ``axis``.
 
-    See Also
-    --------
-        concatenate : Join a sequence of arrays together.
-
     """
     offsets = (0,) + tuple(_accumulate(shape[axis] for shape in shapes[:-1]))
     return [slice(offset, offset + shape[axis])
@@ -526,10 +524,8 @@ def _block_info_recursion(arrays, list_ndim, result_ndim, depth=0):
         slices = [(slice_prefix,) + the_slice
                   for slice_prefix, inner_slices in zip(slice_prefixes, slices)
                   for the_slice in inner_slices]
-        # Flatted the arrays
-        arrays = [arr
-                  for inner_array in arrays
-                  for arr in inner_array]
+        # Flatten the arrays
+        arrays = list(itertools.chain.from_iterable(arrays))
 
         if depth == 0:
             # To correctly slice into the right dimension,
