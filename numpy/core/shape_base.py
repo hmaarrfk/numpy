@@ -1,6 +1,6 @@
 from __future__ import division, absolute_import, print_function
 
-from itertools import chain, repeat
+import itertools
 
 __all__ = ['atleast_1d', 'atleast_2d', 'atleast_3d', 'block', 'hstack',
            'stack', 'vstack']
@@ -525,7 +525,7 @@ def _block_info_recursion(arrays, list_ndim, result_ndim, depth=0):
                   for slice_prefix, inner_slices in zip(slice_prefixes, slices)
                   for the_slice in inner_slices)
         # Flatten the arrays
-        arrays = chain.from_iterable(arrays)
+        arrays = itertools.chain.from_iterable(arrays)
 
         if depth == 0:
             # To correctly slice into the right dimension,
@@ -537,7 +537,7 @@ def _block_info_recursion(arrays, list_ndim, result_ndim, depth=0):
         # broadcast the array to the total number of dimensions
         # arr = _atleast_nd(arrays, result_ndim)
         shape = getattr(arrays, 'shape', ())
-        shape = tuple(repeat(1, result_ndim - len(shape))) + shape
+        shape = (1,) * (result_ndim - len(shape)) + shape
         # Return the slice and the array inside a list to be consistent with
         # the recursive case.
         return shape, [()], [arrays]
