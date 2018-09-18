@@ -411,13 +411,12 @@ def _block_check_depths_match(arrays, parent_index=[]):
             )
         )
     elif type(arrays) is list and len(arrays) > 0:
-        idxs_ndims = (_block_check_depths_match(arr, parent_index + [i])
-                      for i, arr in enumerate(arrays))
+        info = [_block_check_depths_match(arr, parent_index + [i])
+                for i, arr in enumerate(arrays)]
 
-        first_index, max_arr_ndim = next(idxs_ndims)
-        for index, ndim in idxs_ndims:
-            if ndim > max_arr_ndim:
-                max_arr_ndim = ndim
+        array_indices, shapes, slices, arrays = zip(*info)
+        first_index = array_indices[0]
+        for index in array_indices[1:]:
             if len(index) != len(first_index):
                 raise ValueError(
                     "List depths are mismatched. First element was at depth "
@@ -430,16 +429,41 @@ def _block_check_depths_match(arrays, parent_index=[]):
             # propagate our flag that indicates an empty list at the bottom
             if index[-1] is None:
                 first_index = index
-        return first_index, max_arr_ndim
+
+        if first_index[-1] is None:
+            return first_index, None, None, None
+
+        arrays = list(itertools.chain.from_iterable(arrays))
+        list_ndim = len(first_index)
+        arr_max_dims = max(arr.ndim for arr in arrays)
+        result_ndim = max(list_ndim, arr_max_dims)
+        depth = len(parent_index)
+        axis = result_ndim - list_ndim + depth
+        # Broadcast the shapes to the required dim
+        shapes = [(1,) * (result_ndim - len(shape)) + shape
+                  for shape in shapes]
+        shape = _concatenate_shapes(shapes, axis)
+        slice_prefixes = _concatenate_shapes_as_slices(shapes, axis)
+        slices = [(slice_prefix,) + the_slice
+                  for slice_prefix, inner_slices in zip(slice_prefixes, slices)
+                  for the_slice in inner_slices]
+
+        return first_index, shape, slices, arrays
     elif type(arrays) is list and len(arrays) == 0:
         # We've 'bottomed out' on an empty list
-        return parent_index + [None], 0
+        # It doesn't mater what we return for shape, slices, arrays
+        # they are all ignored because of the flag [None] at the
+        # end of the parent_index
+        return parent_index + [None], None, None, None
     else:
         # We've 'bottomed out' - arrays is either a scalar or an array
-        return parent_index, _nx.ndim(arrays)
+        arr = array(arrays, copy=False, subok=True)
+        # Return the slice and the array inside a list to be consistent with
+        # the recursive case.
+        return parent_index, arr.shape, [()], [arr]
 
 
-def _concatenate_shapes(shapes, axis):
+def _concatenate_shapes(shapes, axis, ndim=None):
     """Given array shapes, return the resulting shape that would occur
     after array concatenation.
 
@@ -684,19 +708,21 @@ def block(arrays):
 
 
     """
-    bottom_index, arr_ndim = _block_check_depths_match(arrays)
-    list_ndim = len(bottom_index)
+    bottom_index, shape, slices, arrs = _block_check_depths_match(arrays)
     if bottom_index and bottom_index[-1] is None:
         raise ValueError(
             'List at {} cannot be empty'.format(
                 _block_format_index(bottom_index)
             )
         )
-    result_ndim = max(arr_ndim, list_ndim)
-    shape, slices, arrays = _block_info_recursion(arrays,
-                                                  list_ndim, result_ndim)
-    dtype = _nx.result_type(*arrays)
+
+    # list_ndim = len(bottom_index)
+    # arr_ndim = max(arr.ndim for arr in arrs)
+    # result_ndim = max(arr_ndim, list_ndim)
+    # shape, slices, arrs = _block_info_recursion(arrays,
+    #                                            list_ndim, result_ndim)
+    dtype = _nx.result_type(*arrs)
     result = _nx.empty(shape=shape, dtype=dtype)
-    for the_slice, the_arr in zip(slices, arrays):
-        result[(Ellipsis,) + the_slice] = the_arr
+    for the_slice, arr in zip(slices, arrs):
+        result[(Ellipsis,) + the_slice] = arr
     return result
