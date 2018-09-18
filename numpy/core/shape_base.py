@@ -523,11 +523,9 @@ def _block_info_recursion(arrays, list_ndim, result_ndim, depth=0):
         # will require the matching offset (computed above with accumulate)
         slice_prefixes = _concatenate_shapes_as_slices(shapes, axis)
         # Prepend the slice prefix and flatten the slices
-        slices = [
-            (slice_prefix,) + the_slice
-            for slice_prefix, inner_slices in zip(slice_prefixes, slices)
-            for the_slice in inner_slices
-        ]
+        slices = [(slice_prefix,) + the_slice
+                  for slice_prefix, inner_slices in zip(slice_prefixes, slices)
+                  for the_slice in inner_slices]
         # Flatted the arrays
         arrays = [arr
                   for inner_array in arrays
