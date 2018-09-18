@@ -500,13 +500,13 @@ def _block_info_recursion(arrays, list_ndim, result_ndim, depth=0):
         # To create the correct offset, one needs to prepend the appropriate
         # offset to each of them. Each list (containing one or more arrays)
         # will require the matching offset (computed above with accumulate)
+        slice_prefixes = [(slice(offset, offset + shape[axis]),)
+                          for offset, shape in zip(offsets, shapes)]
         slices = [
-            [
-                (slice(offset, offset+shape[axis]),) + the_slice
-                for the_slice in inner_slices
-            ]
-            for offset, shape, inner_slices in zip(offsets, shapes, slices)
+            [slice_prefix + the_slice for the_slice in inner_slices]
+            for slice_prefix, inner_slices in zip(slice_prefixes, slices)
         ]
+
         shape = _concatenate_shapes(shapes, axis)
 
         # Flatten the slices and arrays
