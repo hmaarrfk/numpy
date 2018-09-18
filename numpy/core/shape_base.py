@@ -1,8 +1,5 @@
 from __future__ import division, absolute_import, print_function
 
-from itertools import chain
-
-
 __all__ = ['atleast_1d', 'atleast_2d', 'atleast_3d', 'block', 'hstack',
            'stack', 'vstack']
 
@@ -474,6 +471,30 @@ def _accumulate(values):
     return tuple(accumulated)
 
 
+def _concatenate_shapes_as_slices(shapes, axis):
+    """
+    Produce the slices that match the destination each array would end up
+    along axis.
+
+    For the following situation::
+
+        ret = concatenate([a, b, c], axis=0)
+        sl_a, sl_b, sl_c = concatenate_slices([a, b, c], axis=0)
+
+    The result will be that ``ret[sl_a] == a``, ``ret[sl_b] == b``, and
+    ``ret[sl_c] == c``.
+    Similar properties hold for other values of ``axis``.
+
+    See Also
+    --------
+        concatenate : Join a sequence of arrays together.
+
+    """
+    offsets = (0,) + tuple(_accumulate(shape[axis] for shape in shapes[:-1]))
+    return [slice(offset, offset + shape[axis])
+            for offset, shape in zip(offsets, shapes)]
+
+
 def _block_info_recursion(arrays, list_ndim, result_ndim, depth=0):
     """Form required information to block the arrays using a flat iterator.
 
@@ -492,26 +513,26 @@ def _block_info_recursion(arrays, list_ndim, result_ndim, depth=0):
         info = [_block_info_recursion(arr, list_ndim, result_ndim, depth + 1)
                 for arr in arrays]
         shapes, slices, arrays = zip(*info)
-        # Compute the offset for each array
-        offsets = (0,) + tuple(_accumulate(shape[axis]
-                                           for shape in shapes[:-1]))
+        # Compute the resulting shape
+        shape = _concatenate_shapes(shapes, axis)
+
         # `slices` and `arrays` contain lists that have the information
         # from the inner lists provided to the concatenation function.
         # To create the correct offset, one needs to prepend the appropriate
         # offset to each of them. Each list (containing one or more arrays)
         # will require the matching offset (computed above with accumulate)
-        slice_prefixes = [(slice(offset, offset + shape[axis]),)
-                          for offset, shape in zip(offsets, shapes)]
+        slice_prefixes = _concatenate_shapes_as_slices(shapes, axis)
+        # Prepend the slice prefix and flatten the slices
         slices = [
-            [slice_prefix + the_slice for the_slice in inner_slices]
+            (slice_prefix,) + the_slice
             for slice_prefix, inner_slices in zip(slice_prefixes, slices)
+            for the_slice in inner_slices
         ]
+        # Flatted the arrays
+        arrays = [arr
+                  for inner_array in arrays
+                  for arr in inner_array]
 
-        shape = _concatenate_shapes(shapes, axis)
-
-        # Flatten the slices and arrays
-        slices = list(chain.from_iterable(slices))
-        arrays = list(chain.from_iterable(arrays))
         if depth == 0:
             # To correctly slice into the right dimension,
             # prepend indices to the slice.
