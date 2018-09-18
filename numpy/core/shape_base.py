@@ -535,10 +535,12 @@ def _block_info_recursion(arrays, list_ndim, result_ndim, depth=0):
     else:
         # Base case
         # broadcast the array to the total number of dimensions
-        arr = _atleast_nd(arrays, result_ndim)
+        # arr = _atleast_nd(arrays, result_ndim)
+        shape = getattr(arrays, 'shape', ())
+        shape = (1,) * (result_ndim - len(shape)) + shape
         # Return the slice and the array inside a list to be consistent with
         # the recursive case.
-        return arr.shape, [()], [arr]
+        return shape, [()], [arrays]
 
 
 def block(arrays):
