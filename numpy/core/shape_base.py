@@ -368,7 +368,7 @@ def _block_format_index(index):
     """
     Convert a list of indices ``[0, 1, 2]`` into ``"arrays[0][1][2]"``.
     """
-    idx_str = ''.join('[{}]'.format(i) for i in index if i is not None)
+    idx_str = ''.join('[{}]'.format(i) for i in index)
     return 'arrays' + idx_str
 
 
@@ -424,21 +424,24 @@ def _block_info_recursion(arrays, depth=0, parent_index=()):
         arr = _atleast_nd(arrays, ndim=len(parent_index))
         # Return the slice and the array inside a list to be consistent with
         # the recursive case.
+        # returning arr.ndim avoids the computation of len(arr.shape)
         return parent_index, arr.shape, [()], [arr], arr.dtype, arr.ndim
+    # Second most likely case
     elif arr_type is list and len(arrays) > 0:
         list_indices, shapes, slices, arrays, dtype, ndim_min = zip(
                 *[_block_info_recursion(arr, depth+1, parent_index + (i,))
                   for i, arr in enumerate(arrays)]
             )
+
+        # cache the first index and its length
         first_index = list_indices[0]
         list_ndim = len(first_index)
-        # empty lists are falsy
+        # empty lists are falsy. This is unlikely in working code
+        # a costly operation to check otherwise
         if [True for index in list_indices if len(index) != list_ndim]:
-            # I know we could have had a loop, but this is really unlikely
-            # most people are blocking matrices with working code
-            # therefore you won't get here on a daily basis, and it is OK
-            # to just run the check again
             i = [len(index) != list_ndim for index in list_indices].index(True)
+            # keep these checks in this order as we want the error above to be
+            # raised first
             raise ValueError(
                 "List depths are mismatched. First element was at depth "
                 "{}, but there is an element at depth {} ({})".format(
@@ -448,8 +451,6 @@ def _block_info_recursion(arrays, depth=0, parent_index=()):
                 )
             )
 
-        # keep these checks in this order as we want the error above to be
-        # raised first
         # The only reason arrays would have None is if there was an error
         if None in arrays:
             # propagate our flag that indicates an empty list at the bottom
@@ -459,10 +460,10 @@ def _block_info_recursion(arrays, depth=0, parent_index=()):
         result_ndim = max(ndim_min)
         # Axis where we will concatenate
         axis = result_ndim - list_ndim + depth
-        # Broadcast the shapes to the required dim
-        # Concatenating tuples is expensive, don't do it if you don't have to
+        # Broadcast the shapes to the required dim by prepending 1s
         shapes = [(1,) * (result_ndim - len(shape)) + shape
                   for shape in shapes]
+
         # concatenate the shapes along the desired axis
         shape, shape_on_axis = _concatenate_shapes(shapes, axis)
 
@@ -471,13 +472,23 @@ def _block_info_recursion(arrays, depth=0, parent_index=()):
         # To create the correct offset, one needs to prepend the appropriate
         # offset to each of them. Each list (containing one or more arrays)
         # will require the matching offset (computed above with accumulate)
-        slice_prefixes = _concatenate_as_slices(shape_on_axis)
+
+
+        # I know we don't need the last offset
+        # but this makes us compute the ending index at the same time
+        # slicing is also expensive, so avoid it
+        offsets = _accumulate(shape_on_axis)
+        # Create a slice prefix as a tuple
+        # This avoids us having to create new tuples every time we want to
+        # prepend the prefixes
+        slice_prefixes = [(slice(*s),) for s in zip([0] + offsets, offsets)]
         # Prepend the slice prefix and flatten the slices
         slices = [slice_prefix + the_slice
                   for slice_prefix, inner_slices in zip(slice_prefixes, slices)
                   for the_slice in inner_slices]
 
         # Flatten the arrays
+        # functools.reduce + operator.add seems to be the fastest
         arrays = functools.reduce(operator.add, arrays)
         dtype = _nx.result_type(*dtype)
 
@@ -537,26 +548,6 @@ def _accumulate(values):
         accumulated.append(value)
 
     return accumulated
-
-
-def _concatenate_as_slices(shape_on_axis):
-    """
-    Produce the slices that match the destination each array would end up
-    along axis.
-
-    For the following situation::
-
-        ret = concatenate([a, b, c], axis=0)
-        sl_a, sl_b, sl_c = concatenate_slices([a, b, c], axis=0)
-
-    The result will be that ``ret[sl_a] == a``, ``ret[sl_b] == b``, and
-    ``ret[sl_c] == c``.
-    Similar properties hold for other values of ``axis``.
-
-    """
-    offsets = _accumulate(shape_on_axis)
-    return [(slice(offset, end),)
-            for offset, end in zip([0] + offsets, offsets)]
 
 
 def block(arrays):
