@@ -370,7 +370,7 @@ def _block_format_index(index):
     return 'arrays' + idx_str
 
 
-def _block_info_recursion(arrays, parent_index=[]):
+def _block_info_recursion(arrays, parent_index=()):
     """
     Recursive function checking that the depths of nested lists in `arrays`
     all match. Mismatch raises a ValueError as described in the block
@@ -412,7 +412,7 @@ def _block_info_recursion(arrays, parent_index=[]):
         Cache computation of the number of dimensions for the final array.
 
     """
-    if type(arrays) is tuple:
+    if isinstance(arrays, tuple):
         # not strictly necessary, but saves us from:
         #  - more than one way to do things - no point treating tuples like
         #    lists
@@ -425,63 +425,66 @@ def _block_info_recursion(arrays, parent_index=[]):
                 _block_format_index(parent_index)
             )
         )
-    elif type(arrays) is list and len(arrays) > 0:
-        info = [_block_info_recursion(arr, parent_index + [i])
-                for i, arr in enumerate(arrays)]
-
-        list_indices, shapes, slices, arrays, dtype, ndim_min = zip(*info)
-        first_index = list_indices[0]
-        list_ndim = len(first_index)
-        for index in list_indices[1:]:
-            if len(index) != list_ndim:
-                raise ValueError(
-                    "List depths are mismatched. First element was at depth "
-                    "{}, but there is an element at depth {} ({})".format(
-                        len(first_index),
-                        len(index),
-                        _block_format_index(index)
-                    )
+    elif isinstance(arrays, list):
+        if len(arrays) > 0:
+            list_indices, shapes, slices, arrays, dtype, ndim_min = zip(
+                    *[
+                        _block_info_recursion(arr, parent_index + (i,))
+                        for i, arr in enumerate(arrays)
+                    ]
                 )
-            # propagate our flag that indicates an empty list at the bottom
-            if index[-1] is None:
-                first_index = index
+            first_index = list_indices[0]
+            list_ndim = len(first_index)
+            if len(set(len(index) for index in list_indices)) != 1:
+                for index in list_indices[1:]:
+                    if len(index) != list_ndim:
+                        raise ValueError(
+                            "List depths are mismatched. First element was at depth "
+                            "{}, but there is an element at depth {} ({})".format(
+                            len(first_index),
+                            len(index),
+                            _block_format_index(index)
+                            )
+                        )
 
-        if first_index[-1] is None:
-            return first_index, None, None, None, None, None
+            if None in (index[-1] for index in list_indices):
+                # propagate our flag that indicates an empty list at the bottom
+                bad_index = [index[-1] for index in list_indices].index(None)
+                return list_indices[bad_index], None, None, None, None, None
 
-        depth = len(parent_index)
-        result_ndim = max(ndim_min)
-        # Axis where we will concatenate
-        axis = result_ndim - list_ndim + depth
+            depth = len(parent_index)
+            result_ndim = max(ndim_min)
+            # Axis where we will concatenate
+            axis = result_ndim - list_ndim + depth
 
-        # Broadcast the shapes to the required dim
-        shapes = [(1,) * (result_ndim - len(shape)) + shape
-                  for shape in shapes]
-        # concatenate the shapes along the desired axis
-        shape = _concatenate_shapes(shapes, axis)
+            # Broadcast the shapes to the required dim
+            shapes = [(1,) * (result_ndim - len(shape)) + shape
+                      for shape in shapes]
+            # concatenate the shapes along the desired axis
+            shape, shape_on_axis = _concatenate_shapes(shapes, axis)
 
-        # `slices` and `arrays` contain lists that have the information
-        # from the inner lists provided to the concatenation function.
-        # To create the correct offset, one needs to prepend the appropriate
-        # offset to each of them. Each list (containing one or more arrays)
-        # will require the matching offset (computed above with accumulate)
-        slice_prefixes = _concatenate_shapes_as_slices(shapes, axis)
-        # Prepend the slice prefix and flatten the slices
-        slices = [(slice_prefix,) + the_slice
-                  for slice_prefix, inner_slices in zip(slice_prefixes, slices)
-                  for the_slice in inner_slices]
+            # `slices` and `arrays` contain lists that have the information
+            # from the inner lists provided to the concatenation function.
+            # To create the correct offset, one needs to prepend the appropriate
+            # offset to each of them. Each list (containing one or more arrays)
+            # will require the matching offset (computed above with accumulate)
+            slice_prefixes = _concatenate_as_slices(shape_on_axis)
+            # Prepend the slice prefix and flatten the slices
+            slices = [slice_prefix + the_slice
+                      for slice_prefix, inner_slices in zip(slice_prefixes, slices)
+                      for the_slice in inner_slices]
 
-        # Flatten the arrays
-        arrays = list(itertools.chain.from_iterable(arrays))
-        dtype = _nx.result_type(*dtype)
+            # Flatten the arrays
+            arrays = list(itertools.chain.from_iterable(arrays))
+            dtype = _nx.result_type(*dtype)
 
-        return first_index, shape, slices, arrays, dtype, result_ndim
-    elif type(arrays) is list and len(arrays) == 0:
-        # We've 'bottomed out' on an empty list
-        # It doesn't mater what we return for shape, slices, arrays
-        # they are all ignored because of the flag [None] at the
-        # end of the parent_index
-        return parent_index + [None], None, None, None, None, None
+            return first_index, shape, slices, arrays, dtype, result_ndim
+        else:  # len == 0
+            # We've 'bottomed out' on an empty list
+            # It doesn't mater what we return for shape, slices, arrays
+            # they are all ignored because of the flag [None] at the
+            # end of the parent_index
+            return parent_index + (None,), None, None, None, None, None
     else:
         # Base case
         # cast as array
@@ -494,22 +497,18 @@ def _block_info_recursion(arrays, parent_index=[]):
         return parent_index, arr.shape, [()], [arr], arr.dtype, ndim_min
 
 
-def _concatenate_shapes(shapes, axis, ndim=None):
+def _concatenate_shapes(shapes, axis):
     """Given array shapes, return the resulting shape that would occur
     after array concatenation.
 
     concatenate(arrs, axis).shape == _concatenate_shapes([a.shape for a in arrs], axis)
     """
     # Take a shape, any shape
-    first_shape = shapes[0]
-
-    shape_compare = first_shape[:axis] + first_shape[axis+1:]
-    shapes_dont_match = any(shape[:axis] + shape[axis+1:] != shape_compare
-                            for shape in shapes[1:])
-    if shapes_dont_match:
+    shape_on_axis, shape_off_axis = zip(*[(shape[axis], shape[:axis] + shape[axis+1:])
+                                          for shape in shapes])
+    if len(set(shape_off_axis)) != 1:
         raise ValueError('Mismatched array shapes in block.')
-    shape_on_dim = sum(shape[axis] for shape in shapes)
-    return first_shape[:axis] + (shape_on_dim,) + first_shape[axis+1:]
+    return (shapes[0][:axis] + (sum(shape_on_axis),) + shapes[0][axis+1:]), shape_on_axis
 
 
 def _atleast_nd(a, ndim):
@@ -530,7 +529,7 @@ def _accumulate(values):
     return tuple(accumulated)
 
 
-def _concatenate_shapes_as_slices(shapes, axis):
+def _concatenate_as_slices(shape_on_axis):
     """
     Produce the slices that match the destination each array would end up
     along axis.
@@ -545,9 +544,9 @@ def _concatenate_shapes_as_slices(shapes, axis):
     Similar properties hold for other values of ``axis``.
 
     """
-    offsets = (0,) + tuple(_accumulate(shape[axis] for shape in shapes[:-1]))
-    return [slice(offset, offset + shape[axis])
-            for offset, shape in zip(offsets, shapes)]
+    offsets = (0,) + _accumulate(shape_on_axis[:-1])
+    return [(slice(offset, offset + shape),)
+            for offset, shape in zip(offsets, shape_on_axis)]
 
 
 def block(arrays):
