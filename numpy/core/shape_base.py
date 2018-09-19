@@ -414,7 +414,7 @@ def _block_check_depths_match(arrays, depth=0, parent_index=[]):
         info = [_block_check_depths_match(arr, depth+1, parent_index + [i])
                 for i, arr in enumerate(arrays)]
 
-        array_indices, shapes, slices, arrays, ndims, list_ndims = zip(*info)
+        array_indices, shapes, slices, arrays, ndims = zip(*info)
         first_index = array_indices[0]
         for index in array_indices[1:]:
             if len(index) != len(first_index):
@@ -433,9 +433,8 @@ def _block_check_depths_match(arrays, depth=0, parent_index=[]):
         if first_index[-1] is None:
             return first_index, None, None, None
 
-        list_ndim = list_ndims[0]
-        arr_max_dims = max(ndims)
-        result_ndim = arr_max_dims
+        list_ndim = len(first_index)
+        result_ndim = max(ndims)
         axis = result_ndim - list_ndim + depth
         # Broadcast the shapes to the required dim
         shapes = [(1,) * (result_ndim - len(shape)) + shape
@@ -447,20 +446,20 @@ def _block_check_depths_match(arrays, depth=0, parent_index=[]):
                   for the_slice in inner_slices]
         arrays = list(itertools.chain.from_iterable(arrays))
 
-        return first_index, shape, slices, arrays, arr_max_dims, list_ndim
+        return first_index, shape, slices, arrays, result_ndim
     elif type(arrays) is list and len(arrays) == 0:
         # We've 'bottomed out' on an empty list
         # It doesn't mater what we return for shape, slices, arrays
         # they are all ignored because of the flag [None] at the
         # end of the parent_index
-        return parent_index + [None], None, None, None, None, None
+        return parent_index + [None], None, None, None, None
     else:
         # We've 'bottomed out' - arrays is either a scalar or an array
         list_depth = len(parent_index)
         arr = _atleast_nd(arrays, ndim=list_depth)
         # Return the slice and the array inside a list to be consistent with
         # the recursive case.
-        return parent_index, arr.shape, [()], [arr], arr.ndim, list_depth
+        return parent_index, arr.shape, [()], [arr], arr.ndim
 
 
 def _concatenate_shapes(shapes, axis, ndim=None):
