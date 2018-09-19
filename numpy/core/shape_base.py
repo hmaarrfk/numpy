@@ -457,7 +457,7 @@ def _block_info_recursion(arrays, depth=0, parent_index=()):
             axis = result_ndim - list_ndim + depth
             # Broadcast the shapes to the required dim
             # Concatenating tuples is expensive, don't do it if you don't have to
-            shapes = [shape if ndim == result_ndim else (1,) * (result_ndim - ndim) + shape
+            shapes = [(1,) * (result_ndim - ndim) + shape
                       for shape, ndim in zip(shapes, ndim_min)]
             # concatenate the shapes along the desired axis
             shape, shape_on_axis = _concatenate_shapes(shapes, axis)
