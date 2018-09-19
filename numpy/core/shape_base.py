@@ -448,6 +448,8 @@ def _block_info_recursion(arrays, depth=0, parent_index=()):
                 )
             )
 
+        # keep these checks in this order as we want the error above to be 
+        # raised first
         # The only reason arrays would have None is if there was an error
         if None in arrays:
             # propagate our flag that indicates an empty list at the bottom
@@ -509,15 +511,14 @@ def _concatenate_shapes(shapes, axis):
     """
     # Take a shape, any shape
 
-    shape_on_axis = [shape[axis] for shape in shapes]
-    # shape_on_axis, shape_off_axis = zip(*[(shape[axis], shape[:axis] + shape[axis+1:])
-    #                                       for shape in shapes])
+    shape_at_axis = [shape[axis] for shape in shapes]
+    
     first_shape = shapes[0]
     first_shape_pre = first_shape[:axis]
     # empty lists are falsy
     if [True for shape in shapes if shape[:axis] != first_shape_pre]:
         raise ValueError('Mismatched array shapes in block.')
-    return (first_shape_pre + (sum(shape_on_axis),) + first_shape[axis+1:]), shape_on_axis
+    return (first_shape_pre + (sum(shape_at_axis),) + first_shape[axis+1:]), shape_at_axis
 
 
 def _atleast_nd(a, ndim):
