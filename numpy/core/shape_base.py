@@ -452,7 +452,7 @@ def _block_check_depths_match(arrays, depth=0, parent_index=[]):
                   for the_slice in inner_slices]
 
         # Generate a flat list of arrays to copy in
-        arrays = itertools.chain.from_iterable(arrays)
+        arrays = list(itertools.chain.from_iterable(arrays))
 
         return first_index, shape, slices, arrays
     elif type(arrays) is list and len(arrays) == 0:
@@ -730,7 +730,7 @@ def block(arrays):
     # result_ndim = max(arr_ndim, list_ndim)
     # shape, slices, arrs = _block_info_recursion(arrays,
     #                                            list_ndim, result_ndim)
-    arrs = list(arrs)
+    # arrs = list(arrs)
     dtype = _nx.result_type(*arrs)
     result = _nx.empty(shape=shape, dtype=dtype)
     for the_slice, arr in zip(slices, arrs):
