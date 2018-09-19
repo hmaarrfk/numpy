@@ -416,8 +416,7 @@ def _block_info_recursion(arrays, depth=0, parent_index=()):
     """
     # Very likely, check first
     # arr_type = type(arrays)
-    arr_type = type(arrays)
-    if arr_type not in (list, tuple):
+    if not isinstance(arrays, (list, tuple)):
         # Base case
         # cast as array
         arr = array(arrays, copy=False, subok=True)
@@ -427,7 +426,7 @@ def _block_info_recursion(arrays, depth=0, parent_index=()):
         # Return the slice and the array inside a list to be consistent with
         # the recursive case.
         return parent_index, (1,) * (ndim_min - arr.ndim) + arr.shape, [()], [arr], arr.dtype, ndim_min
-    elif arr_type is list and len(arrays) > 0:
+    elif isinstance(arrays, list) and len(arrays) > 0:
         list_indices, shapes, slices, arrays, dtype, ndim_min = zip(
                 *[_block_info_recursion(arr, depth+1, parent_index + (i,))
                   for i, arr in enumerate(arrays)]
@@ -479,7 +478,7 @@ def _block_info_recursion(arrays, depth=0, parent_index=()):
 
         return first_index, shape, slices, arrays, dtype, result_ndim
     # This is unlikely in working code
-    elif arr_type is tuple:
+    elif isinstance(arrays, tuple):
         # not strictly necessary, but saves us from:
         #  - more than one way to do things - no point treating tuples like
         #    lists
