@@ -428,14 +428,12 @@ def _block_info_recursion(arrays, parent_index=()):
     elif isinstance(arrays, list):
         if len(arrays) > 0:
             list_indices, shapes, slices, arrays, dtype, ndim_min = zip(
-                    *[
-                        _block_info_recursion(arr, parent_index + (i,))
-                        for i, arr in enumerate(arrays)
-                    ]
+                    *[_block_info_recursion(arr, parent_index + (i,))
+                      for i, arr in enumerate(arrays)]
                 )
             first_index = list_indices[0]
             list_ndim = len(first_index)
-            if len(set(len(index) for index in list_indices)) != 1:
+            if any(len(index) != list_ndim for index in list_indices):
                 for index in list_indices[1:]:
                     if len(index) != list_ndim:
                         raise ValueError(
@@ -504,11 +502,18 @@ def _concatenate_shapes(shapes, axis):
     concatenate(arrs, axis).shape == _concatenate_shapes([a.shape for a in arrs], axis)
     """
     # Take a shape, any shape
-    shape_on_axis, shape_off_axis = zip(*[(shape[axis], shape[:axis] + shape[axis+1:])
-                                          for shape in shapes])
-    if len(set(shape_off_axis)) != 1:
+
+    shape_on_axis = [shape[axis] for shape in shapes]
+    # shape_on_axis, shape_off_axis = zip(*[(shape[axis], shape[:axis] + shape[axis+1:])
+    #                                       for shape in shapes])
+    first_shape = shapes[0]
+    first_shape_pre = first_shape[:axis]
+    first_shape_post = first_shape[axis+1:]
+    if any(shape[:axis] !=  first_shape_pre or
+           shape[axis+1:] != first_shape_post
+           for shape in shapes):
         raise ValueError('Mismatched array shapes in block.')
-    return (shapes[0][:axis] + (sum(shape_on_axis),) + shapes[0][axis+1:]), shape_on_axis
+    return (first_shape_pre + (sum(shape_on_axis),) + first_shape_post), shape_on_axis
 
 
 def _atleast_nd(a, ndim):
