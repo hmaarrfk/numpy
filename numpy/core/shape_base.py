@@ -427,7 +427,7 @@ def _block_info_recursion(arrays, parent_index=[]):
         info = [_block_info_recursion(arr, parent_index + [i])
                 for i, arr in enumerate(arrays)]
 
-        list_indices, shapes, slices, arrays, ndim_min = zip(*info)
+        list_indices, shapes, slices, arrays, dtype, ndim_min = zip(*info)
         first_index = list_indices[0]
         list_ndim = len(first_index)
         for index in list_indices[1:]:
@@ -445,7 +445,7 @@ def _block_info_recursion(arrays, parent_index=[]):
                 first_index = index
 
         if first_index[-1] is None:
-            return first_index, None, None, None, None
+            return first_index, None, None, None, None, None
 
         depth = len(parent_index)
         result_ndim = max(ndim_min)
@@ -471,14 +471,15 @@ def _block_info_recursion(arrays, parent_index=[]):
 
         # Flatten the arrays
         arrays = list(itertools.chain.from_iterable(arrays))
+        dtype = _nx.result_type(*dtype)
 
-        return first_index, shape, slices, arrays, result_ndim
+        return first_index, shape, slices, arrays, dtype, result_ndim
     elif type(arrays) is list and len(arrays) == 0:
         # We've 'bottomed out' on an empty list
         # It doesn't mater what we return for shape, slices, arrays
         # they are all ignored because of the flag [None] at the
         # end of the parent_index
-        return parent_index + [None], None, None, None, None
+        return parent_index + [None], None, None, None, None, None
     else:
         # Base case
         # cast as array
@@ -488,7 +489,7 @@ def _block_info_recursion(arrays, parent_index=[]):
         ndim_min = max(len(parent_index), arr.ndim)
         # Return the slice and the array inside a list to be consistent with
         # the recursive case.
-        return parent_index, arr.shape, [()], [arr], ndim_min
+        return parent_index, arr.shape, [()], [arr], arr.dtype, ndim_min
 
 
 def _concatenate_shapes(shapes, axis, ndim=None):
@@ -695,14 +696,13 @@ def block(arrays):
 
 
     """
-    bottom_index, shape, slices, arrs, *_ = _block_info_recursion(arrays)
+    bottom_index, shape, slices, arrs, dtype, *_ = _block_info_recursion(arrays)
     if bottom_index and bottom_index[-1] is None:
         raise ValueError(
             'List at {} cannot be empty'.format(
                 _block_format_index(bottom_index)
             )
         )
-    dtype = _nx.result_type(*arrs)
     result = _nx.empty(shape=shape, dtype=dtype)
     for the_slice, arr in zip(slices, arrs):
         result[(Ellipsis,) + the_slice] = arr
