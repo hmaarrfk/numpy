@@ -434,16 +434,19 @@ def _block_info_recursion(arrays, depth=0, parent_index=()):
         list_ndim = len(first_index)
         # empty lists are falsy
         if [True for index in list_indices if len(index) != list_ndim]:
-            for index in list_indices[1:]:
-                if len(index) != list_ndim:
-                    raise ValueError(
-                        "List depths are mismatched. First element was at depth "
-                        "{}, but there is an element at depth {} ({})".format(
-                        len(first_index),
-                        len(index),
-                        _block_format_index(index)
-                        )
-                    )
+            # I know we could have had a loop, but this is really unlikely
+            # most people are blocking matrices with working code
+            # therefore you won't get here on a daily basis, and it is OK
+            # to just run the check again
+            i = [len(index) != list_ndim for index in list_indices].index(True)
+            raise ValueError(
+                "List depths are mismatched. First element was at depth "
+                "{}, but there is an element at depth {} ({})".format(
+                len(first_index),
+                len(list_indices[i]),
+                _block_format_index(list_indices[i])
+                )
+            )
 
         # The only reason arrays would have None is if there was an error
         if None in arrays:
