@@ -361,6 +361,8 @@ def stack(arrays, axis=0, out=None):
     expanded_arrays = [arr[sl] for arr in arrays]
     return _nx.concatenate(expanded_arrays, axis=axis, out=out)
 
+import functools
+import operator
 
 def _block_format_index(index):
     """
@@ -454,10 +456,9 @@ def _block_info_recursion(arrays, parent_index=()):
             result_ndim = max(ndim_min)
             # Axis where we will concatenate
             axis = result_ndim - list_ndim + depth
-
             # Broadcast the shapes to the required dim
-            shapes = [(1,) * (result_ndim - len(shape)) + shape
-                      for shape in shapes]
+            shapes = [(1,) * (result_ndim - ndim) + shape
+                      for shape, ndim in zip(shapes, ndim_min)]
             # concatenate the shapes along the desired axis
             shape, shape_on_axis = _concatenate_shapes(shapes, axis)
 
@@ -473,7 +474,7 @@ def _block_info_recursion(arrays, parent_index=()):
                       for the_slice in inner_slices]
 
             # Flatten the arrays
-            arrays = list(itertools.chain.from_iterable(arrays))
+            arrays = functools.reduce(operator.add, arrays)
             dtype = _nx.result_type(*dtype)
 
             return first_index, shape, slices, arrays, dtype, result_ndim
@@ -492,7 +493,7 @@ def _block_info_recursion(arrays, parent_index=()):
         ndim_min = max(len(parent_index), arr.ndim)
         # Return the slice and the array inside a list to be consistent with
         # the recursive case.
-        return parent_index, arr.shape, [()], [arr], arr.dtype, ndim_min
+        return parent_index, (1,) * (ndim_min - arr.ndim) + arr.shape, [()], [arr], arr.dtype, ndim_min
 
 
 def _concatenate_shapes(shapes, axis):
