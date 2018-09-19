@@ -470,10 +470,12 @@ def _concatenate_shapes(shapes, axis, ndim=None):
     """
     # Take a shape, any shape
     first_shape = shapes[0]
-    for shape in shapes[1:]:
-        if (shape[:axis] != first_shape[:axis] or
-                shape[axis+1:] != first_shape[axis+1:]):
-            raise ValueError('Mismatched array shapes in block.')
+
+    shape_compare = first_shape[:axis] + first_shape[axis+1:]
+    shapes_dont_match = any(shape[:axis] + shape[axis+1:] != shape_compare
+                            for shape in shapes[1:])
+    if shapes_dont_match:
+        raise ValueError('Mismatched array shapes in block.')
     shape_on_dim = sum(shape[axis] for shape in shapes)
     return first_shape[:axis] + (shape_on_dim,) + first_shape[axis+1:]
 
