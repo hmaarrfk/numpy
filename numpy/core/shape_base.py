@@ -415,8 +415,8 @@ def _block_info_recursion(arrays, depth=0, parent_index=()):
 
     """
     # Very likely, check first
-    # arr_type = type(arrays)
-    if not isinstance(arrays, (list, tuple)):
+    arr_type = type(arrays)
+    if arr_type not in (list, tuple):
         # Base case
         # cast as array
         # We don't know the number of dimensions yet, but we know it is at
@@ -425,7 +425,7 @@ def _block_info_recursion(arrays, depth=0, parent_index=()):
         # Return the slice and the array inside a list to be consistent with
         # the recursive case.
         return parent_index, arr.shape, [()], [arr], arr.dtype, arr.ndim
-    elif isinstance(arrays, list) and len(arrays) > 0:
+    elif arr_type is list and len(arrays) > 0:
         list_indices, shapes, slices, arrays, dtype, ndim_min = zip(
                 *[_block_info_recursion(arr, depth+1, parent_index + (i,))
                   for i, arr in enumerate(arrays)]
@@ -448,7 +448,7 @@ def _block_info_recursion(arrays, depth=0, parent_index=()):
                 )
             )
 
-        # keep these checks in this order as we want the error above to be 
+        # keep these checks in this order as we want the error above to be
         # raised first
         # The only reason arrays would have None is if there was an error
         if None in arrays:
@@ -512,7 +512,7 @@ def _concatenate_shapes(shapes, axis):
     # Take a shape, any shape
 
     shape_at_axis = [shape[axis] for shape in shapes]
-    
+
     first_shape = shapes[0]
     first_shape_pre = first_shape[:axis]
     # empty lists are falsy
