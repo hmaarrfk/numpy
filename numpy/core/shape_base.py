@@ -447,7 +447,7 @@ def _block_info_recursion(arrays, depth=0, parent_index=()):
                             )
                         )
 
-            if None in (index[-1] for index in list_indices):
+            if None in [index[-1] for index in list_indices]:
                 # propagate our flag that indicates an empty list at the bottom
                 bad_index = [index[-1] for index in list_indices].index(None)
                 return list_indices[bad_index], None, None, None, None, None
@@ -508,7 +508,7 @@ def _concatenate_shapes(shapes, axis):
     #                                       for shape in shapes])
     first_shape = shapes[0]
     first_shape_pre = first_shape[:axis]
-    if any(shape[:axis] !=  first_shape_pre for shape in shapes):
+    if any([shape[:axis] !=  first_shape_pre for shape in shapes]):
         raise ValueError('Mismatched array shapes in block.')
     return (first_shape_pre + (sum(shape_on_axis),) + first_shape[axis+1:]), shape_on_axis
 
