@@ -698,7 +698,7 @@ def block(arrays):
 
 
     """
-    bottom_index, shape, slices, arrs, dtype, *_ = _block_info_recursion(arrays)
+    bottom_index, shape, slices, arrs, dtype, _ = _block_info_recursion(arrays)
     if bottom_index and bottom_index[-1] is None:
         raise ValueError(
             'List at {} cannot be empty'.format(
