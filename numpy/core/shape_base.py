@@ -531,7 +531,7 @@ def _accumulate(values):
         value += v
         accumulated.append(value)
 
-    return tuple(accumulated)
+    return accumulated
 
 
 def _concatenate_as_slices(shape_on_axis):
@@ -549,9 +549,9 @@ def _concatenate_as_slices(shape_on_axis):
     Similar properties hold for other values of ``axis``.
 
     """
-    offsets = (0,) + _accumulate(shape_on_axis[:-1])
-    return [(slice(offset, offset + shape),)
-            for offset, shape in zip(offsets, shape_on_axis)]
+    offsets = _accumulate(shape_on_axis)
+    return [(slice(offset, end),)
+            for offset, end in zip([0] + offsets, offsets)]
 
 
 def block(arrays):
