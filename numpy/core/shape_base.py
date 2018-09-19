@@ -376,6 +376,10 @@ def _block_check_depths_match(arrays, parent_index=[]):
     all match. Mismatch raises a ValueError as described in the block
     docstring below.
 
+    It also returns the shape of the final array, along with a list
+    of slices and a slice of arrays that can be used for assignment inside the
+    new array
+
     The entire index (rather than just the depth) needs to be calculated
     for each innermost list, in case an error needs to be raised, so that
     the index of the offending list can be printed as part of the error.
@@ -394,8 +398,17 @@ def _block_check_depths_match(arrays, parent_index=[]):
         The full index of an element from the bottom of the nesting in
         `arrays`. If any element at the bottom is an empty list, this will
         refer to it, and the last index along the empty axis will be `None`.
-    max_arr_ndim : int
-        The maximum of the ndims of the arrays nested in `arrays`.
+    shape : tuple of int
+        The shape that the final array will take on.
+    slices: list of slices
+        The slices into the full array required for assignment. These are
+        required to be prepended with ``(Ellipsis, )`` to obtain to correct
+        final index.
+    arrays: list of ndarray
+        The data to assign to each slice of the full array
+    ndim: int
+        Cache computation of the number of dimensions for the final array.
+
     """
     if type(arrays) is tuple:
         # not strictly necessary, but saves us from:
@@ -414,7 +427,7 @@ def _block_check_depths_match(arrays, parent_index=[]):
         info = [_block_check_depths_match(arr, parent_index + [i])
                 for i, arr in enumerate(arrays)]
 
-        list_indices, shapes, slices, arrays = zip(*info)
+        list_indices, shapes, slices, arrays, ndim_min = zip(*info)
         first_index = list_indices[0]
         list_ndim = len(first_index)
         for index in list_indices[1:]:
@@ -432,43 +445,50 @@ def _block_check_depths_match(arrays, parent_index=[]):
                 first_index = index
 
         if first_index[-1] is None:
-            return first_index, None, None, None
+            return first_index, None, None, None, None
 
         depth = len(parent_index)
-        # shapes is zipped up, make it a list to reuise it
-        shapes = list(shapes)
+        result_ndim = max(ndim_min)
+        # Axis where we will concatenate
+        axis = result_ndim - list_ndim + depth
+
         # Broadcast the shapes to the required dim
-        result_ndim = max(len(shape) for shape in shapes)
         shapes = [(1,) * (result_ndim - len(shape)) + shape
                   for shape in shapes]
-
         # concatenate the shapes along the desired axis
-        axis = result_ndim - list_ndim + depth
         shape = _concatenate_shapes(shapes, axis)
 
-        # Generate a flat list of slices to use to index
+        # `slices` and `arrays` contain lists that have the information
+        # from the inner lists provided to the concatenation function.
+        # To create the correct offset, one needs to prepend the appropriate
+        # offset to each of them. Each list (containing one or more arrays)
+        # will require the matching offset (computed above with accumulate)
         slice_prefixes = _concatenate_shapes_as_slices(shapes, axis)
+        # Prepend the slice prefix and flatten the slices
         slices = [(slice_prefix,) + the_slice
                   for slice_prefix, inner_slices in zip(slice_prefixes, slices)
                   for the_slice in inner_slices]
 
-        # Generate a flat list of arrays to copy in
+        # Flatten the arrays
         arrays = list(itertools.chain.from_iterable(arrays))
 
-        return first_index, shape, slices, arrays
+        return first_index, shape, slices, arrays, result_ndim
     elif type(arrays) is list and len(arrays) == 0:
         # We've 'bottomed out' on an empty list
         # It doesn't mater what we return for shape, slices, arrays
         # they are all ignored because of the flag [None] at the
         # end of the parent_index
-        return parent_index + [None], None, None, None
+        return parent_index + [None], None, None, None, None
     else:
-        # We've 'bottomed out' - arrays is either a scalar or an array
-        list_depth = len(parent_index)
-        arr = _atleast_nd(arrays, ndim=list_depth)
+        # Base case
+        # cast as array
+        arr = array(arrays, copy=False, subok=True)
+        # We don't know the number of dimensions yet, but we know it is at
+        # least this many
+        ndim_min = max(len(parent_index), arr.ndim)
         # Return the slice and the array inside a list to be consistent with
         # the recursive case.
-        return parent_index, arr.shape, [()], [arr]
+        return parent_index, arr.shape, [()], [arr], ndim_min
 
 
 def _concatenate_shapes(shapes, axis, ndim=None):
