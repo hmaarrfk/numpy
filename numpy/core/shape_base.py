@@ -414,10 +414,11 @@ def _block_check_depths_match(arrays, depth=0, parent_index=[]):
         info = [_block_check_depths_match(arr, depth+1, parent_index + [i])
                 for i, arr in enumerate(arrays)]
 
-        array_indices, shapes, slices, arrays = zip(*info)
-        first_index = array_indices[0]
-        for index in array_indices[1:]:
-            if len(index) != len(first_index):
+        list_indices, shapes, slices, arrays = zip(*info)
+        first_index = list_indices[0]
+        list_ndim = len(first_index)
+        for index in list_indices[1:]:
+            if len(index) != list_ndim:
                 raise ValueError(
                     "List depths are mismatched. First element was at depth "
                     "{}, but there is an element at depth {} ({})".format(
@@ -433,7 +434,6 @@ def _block_check_depths_match(arrays, depth=0, parent_index=[]):
         if first_index[-1] is None:
             return first_index, None, None, None
 
-        list_ndim = len(first_index)
         shapes = list(shapes)
         # Broadcast the shapes to the required dim
         result_ndim = max(len(shape) for shape in shapes)
