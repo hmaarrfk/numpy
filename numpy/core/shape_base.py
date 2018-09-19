@@ -495,7 +495,6 @@ def _block_info_recursion(arrays, depth=0, parent_index=()):
         # the recursive case.
         return parent_index, (1,) * (ndim_min - arr.ndim) + arr.shape, [()], [arr], arr.dtype, ndim_min
 
-
 def _concatenate_shapes(shapes, axis):
     """Given array shapes, return the resulting shape that would occur
     after array concatenation.
@@ -509,12 +508,9 @@ def _concatenate_shapes(shapes, axis):
     #                                       for shape in shapes])
     first_shape = shapes[0]
     first_shape_pre = first_shape[:axis]
-    first_shape_post = first_shape[axis+1:]
-    if any(shape[:axis] !=  first_shape_pre or
-           shape[axis+1:] != first_shape_post
-           for shape in shapes):
+    if any(shape[:axis] !=  first_shape_pre for shape in shapes):
         raise ValueError('Mismatched array shapes in block.')
-    return (first_shape_pre + (sum(shape_on_axis),) + first_shape_post), shape_on_axis
+    return (first_shape_pre + (sum(shape_on_axis),) + first_shape[axis+1:]), shape_on_axis
 
 
 def _atleast_nd(a, ndim):
