@@ -370,7 +370,7 @@ def _block_format_index(index):
     return 'arrays' + idx_str
 
 
-def _block_check_depths_match(arrays, depth=0, parent_index=[]):
+def _block_check_depths_match(arrays, parent_index=[]):
     """
     Recursive function checking that the depths of nested lists in `arrays`
     all match. Mismatch raises a ValueError as described in the block
@@ -411,7 +411,7 @@ def _block_check_depths_match(arrays, depth=0, parent_index=[]):
             )
         )
     elif type(arrays) is list and len(arrays) > 0:
-        info = [_block_check_depths_match(arr, depth+1, parent_index + [i])
+        info = [_block_check_depths_match(arr, parent_index + [i])
                 for i, arr in enumerate(arrays)]
 
         list_indices, shapes, slices, arrays = zip(*info)
@@ -434,6 +434,7 @@ def _block_check_depths_match(arrays, depth=0, parent_index=[]):
         if first_index[-1] is None:
             return first_index, None, None, None
 
+        depth = len(parent_index)
         # shapes is zipped up, make it a list to reuise it
         shapes = list(shapes)
         # Broadcast the shapes to the required dim
