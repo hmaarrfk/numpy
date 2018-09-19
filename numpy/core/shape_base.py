@@ -390,7 +390,7 @@ def _block_info_recursion(arrays, parent_index=[]):
         The arrays to check
     parent_index : list of int
         The full index of `arrays` within the nested lists passed to
-        `_block_check_depths_match` at the top of the recursion.
+        `_block_info_recursion` at the top of the recursion.
 
     Returns
     -------
@@ -406,6 +406,8 @@ def _block_info_recursion(arrays, parent_index=[]):
         final index.
     arrays: list of ndarray
         The data to assign to each slice of the full array
+    dtype: dtype
+        The dtype of the resulting array.
     ndim: int
         Cache computation of the number of dimensions for the final array.
 
