@@ -79,13 +79,6 @@ class Block2D(Benchmark):
             for _ in range(n_chunks[0])
         ]
 
-        # a00 = np.full(shape=[s//2 for s in shape], fill_value=1, dtype=dtype)
-        # a01 = np.full(shape=[s//2 for s in shape], fill_value=1, dtype=dtype)
-        # a10 = np.full(shape=[s//2 for s in shape], fill_value=1, dtype=dtype)
-        # a11 = np.full(shape=[s//2 for s in shape], fill_value=1, dtype=dtype)
-
-        # self.block_list = [[a00, a01], [a10, a11]]
-
     def time_block2d(self, shape, dtype, n_chunks):
         np.block(self.block_list)
 
