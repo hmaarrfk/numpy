@@ -436,7 +436,7 @@ def _block_info_recursion(arrays, depth=0, parent_index=()):
                     )
 
         # The only reason arrays would be None is if there was an error
-        if None in [index[-1] for index in list_indices]:
+        if None in arrays:
             # propagate our flag that indicates an empty list at the bottom
             bad_index = [index[-1] for index in list_indices].index(None)
             return list_indices[bad_index], None, None, None, None, None
