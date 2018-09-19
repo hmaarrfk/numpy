@@ -372,7 +372,7 @@ def _block_format_index(index):
     return 'arrays' + idx_str
 
 
-def _block_info_recursion(arrays, parent_index=()):
+def _block_info_recursion(arrays, depth=0, parent_index=()):
     """
     Recursive function checking that the depths of nested lists in `arrays`
     all match. Mismatch raises a ValueError as described in the block
@@ -430,12 +430,12 @@ def _block_info_recursion(arrays, parent_index=()):
     elif isinstance(arrays, list):
         if len(arrays) > 0:
             list_indices, shapes, slices, arrays, dtype, ndim_min = zip(
-                    *[_block_info_recursion(arr, parent_index + (i,))
+                    *[_block_info_recursion(arr, depth+1, parent_index + (i,))
                       for i, arr in enumerate(arrays)]
                 )
             first_index = list_indices[0]
             list_ndim = len(first_index)
-            if any(len(index) != list_ndim for index in list_indices):
+            if any([len(index) != list_ndim for index in list_indices]):
                 for index in list_indices[1:]:
                     if len(index) != list_ndim:
                         raise ValueError(
@@ -452,12 +452,11 @@ def _block_info_recursion(arrays, parent_index=()):
                 bad_index = [index[-1] for index in list_indices].index(None)
                 return list_indices[bad_index], None, None, None, None, None
 
-            depth = len(parent_index)
             result_ndim = max(ndim_min)
             # Axis where we will concatenate
             axis = result_ndim - list_ndim + depth
             # Broadcast the shapes to the required dim
-            shapes = [(1,) * (result_ndim - ndim) + shape
+            shapes = [(1,) * (result_ndim - ndim) + shape 
                       for shape, ndim in zip(shapes, ndim_min)]
             # concatenate the shapes along the desired axis
             shape, shape_on_axis = _concatenate_shapes(shapes, axis)
