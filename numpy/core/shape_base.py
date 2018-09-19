@@ -1,6 +1,7 @@
 from __future__ import division, absolute_import, print_function
 
-import itertools
+import functools
+import operator
 
 __all__ = ['atleast_1d', 'atleast_2d', 'atleast_3d', 'block', 'hstack',
            'stack', 'vstack']
@@ -361,8 +362,6 @@ def stack(arrays, axis=0, out=None):
     expanded_arrays = [arr[sl] for arr in arrays]
     return _nx.concatenate(expanded_arrays, axis=axis, out=out)
 
-import functools
-import operator
 
 def _block_format_index(index):
     """
