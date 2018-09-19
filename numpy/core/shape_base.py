@@ -703,7 +703,9 @@ def block(arrays):
 
     """
     bottom_index, shape, slices, arrs, dtype, _ = _block_info_recursion(arrays)
-    if bottom_index and bottom_index[-1] is None:
+    # The only reason arr would be None is because there would have been an error
+    # otherwise it would be a list
+    if arrs is None:
         raise ValueError(
             'List at {} cannot be empty'.format(
                 _block_format_index(bottom_index)
