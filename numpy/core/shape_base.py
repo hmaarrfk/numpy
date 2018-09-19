@@ -414,20 +414,9 @@ def _block_info_recursion(arrays, depth=0, parent_index=()):
         Cache computation of the number of dimensions for the final array.
 
     """
-    if isinstance(arrays, tuple):
-        # not strictly necessary, but saves us from:
-        #  - more than one way to do things - no point treating tuples like
-        #    lists
-        #  - horribly confusing behaviour that results when tuples are
-        #    treated like ndarray
-        raise TypeError(
-            '{} is a tuple. '
-            'Only lists can be used to arrange blocks, and np.block does '
-            'not allow implicit conversion from tuple to ndarray.'.format(
-                _block_format_index(parent_index)
-            )
-        )
-    elif isinstance(arrays, list):
+    # Very likely, check first
+    arr_type = type(arrays)
+    if arr_type is list:
         if len(arrays) > 0:
             list_indices, shapes, slices, arrays, dtype, ndim_min = zip(
                     *[_block_info_recursion(arr, depth+1, parent_index + (i,))
@@ -457,8 +446,8 @@ def _block_info_recursion(arrays, depth=0, parent_index=()):
             axis = result_ndim - list_ndim + depth
             # Broadcast the shapes to the required dim
             # Concatenating tuples is expensive, don't do it if you don't have to
-            shapes = [(1,) * (result_ndim - ndim) + shape
-                      for shape, ndim in zip(shapes, ndim_min)]
+            shapes = [(1,) * (result_ndim - len(shape)) + shape
+                      for shape in shapes]
             # concatenate the shapes along the desired axis
             shape, shape_on_axis = _concatenate_shapes(shapes, axis)
 
@@ -484,6 +473,21 @@ def _block_info_recursion(arrays, depth=0, parent_index=()):
             # they are all ignored because of the flag [None] at the
             # end of the parent_index
             return parent_index + (None,), None, None, None, None, None
+        
+    # This is unlikely in working code
+    elif arr_type is tuple:
+        # not strictly necessary, but saves us from:
+        #  - more than one way to do things - no point treating tuples like
+        #    lists
+        #  - horribly confusing behaviour that results when tuples are
+        #    treated like ndarray
+        raise TypeError(
+            '{} is a tuple. '
+            'Only lists can be used to arrange blocks, and np.block does '
+            'not allow implicit conversion from tuple to ndarray.'.format(
+                _block_format_index(parent_index)
+            )
+        )
     else:
         # Base case
         # cast as array
