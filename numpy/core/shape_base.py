@@ -419,13 +419,12 @@ def _block_info_recursion(arrays, depth=0, parent_index=()):
     if not isinstance(arrays, (list, tuple)):
         # Base case
         # cast as array
-        arr = array(arrays, copy=False, subok=True)
         # We don't know the number of dimensions yet, but we know it is at
         # least this many
-        ndim_min = max(len(parent_index), arr.ndim)
+        arr = _atleast_nd(arrays, ndim=len(parent_index))
         # Return the slice and the array inside a list to be consistent with
         # the recursive case.
-        return parent_index, (1,) * (ndim_min - arr.ndim) + arr.shape, [()], [arr], arr.dtype, ndim_min
+        return parent_index, arr.shape, [()], [arr], arr.dtype, arr.ndim
     elif isinstance(arrays, list) and len(arrays) > 0:
         list_indices, shapes, slices, arrays, dtype, ndim_min = zip(
                 *[_block_info_recursion(arr, depth+1, parent_index + (i,))
