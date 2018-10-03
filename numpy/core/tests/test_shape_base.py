@@ -366,75 +366,106 @@ def test_stack():
                         stack, [np.arange(2), np.arange(3)])
 
 
+# See for more information on how to parametrize a whole class
+# https://docs.pytest.org/en/latest/example/parametrize.html#parametrizing-test-methods-through-per-class-configuration
+def pytest_generate_tests(metafunc):
+    # called once per each test function
+    if hasattr(metafunc.cls, 'params'):
+        arglist = metafunc.cls.params
+        argnames = sorted(arglist[0])
+        metafunc.parametrize(argnames,
+                             [[funcargs[name] for name in argnames]
+                              for funcargs in arglist])
+
+
 class TestBlock(object):
-    def test_block_simple_row_wise(self):
-        a_2d = np.ones((2, 2))
+    # blocking small arrays and large arrays go through different paths.
+    # will trigger different algorithms depending on the number of element
+    # copies required.
+    # Therefore, we define a test fixture that forces most tests to go through
+    # both code paths
+    # being blocked and the depth of the nesting.
+    # Ultimately, this should be removed if a single code path is chosen
+    params = [dict(size_multiplier=1),
+              dict(size_multiplier=256 ** 2 * 2 + 1)]
+
+    def test_block_simple_row_wise(self, size_multiplier):
+        a_2d = np.ones((2, 2 * size_multiplier))
         b_2d = 2 * a_2d
-        desired = np.array([[1, 1, 2, 2],
-                            [1, 1, 2, 2]])
+        desired = np.zeros((2, 2 * 2 * size_multiplier))
+        desired[..., :2 * size_multiplier] = 1
+        desired[..., 2 * size_multiplier:] = 2
         result = block([a_2d, b_2d])
         assert_equal(desired, result)
 
-    def test_block_simple_column_wise(self):
-        a_2d = np.ones((2, 2))
+    def test_block_simple_column_wise(self, size_multiplier):
+        a_2d = np.ones((2, 2 * size_multiplier))
         b_2d = 2 * a_2d
-        expected = np.array([[1, 1],
-                             [1, 1],
-                             [2, 2],
-                             [2, 2]])
+        expected = np.zeros((4, 2 * size_multiplier))
+        expected[:2] = 1
+        expected[2:] = 2
         result = block([[a_2d], [b_2d]])
         assert_equal(expected, result)
 
-    def test_block_with_1d_arrays_row_wise(self):
+    def test_block_with_1d_arrays_row_wise(self, size_multiplier):
         # # # 1-D vectors are treated as row arrays
-        a = np.array([1, 2, 3])
-        b = np.array([2, 3, 4])
-        expected = np.array([1, 2, 3, 2, 3, 4])
+        a = np.full(3 * size_multiplier, fill_value=3)
+        b = np.full(3 * size_multiplier, fill_value=4)
+
+        expected = np.zeros(6 * size_multiplier)
+        expected[:3 * size_multiplier] = 3
+        expected[3 * size_multiplier:] = 4
         result = block([a, b])
         assert_equal(expected, result)
 
-    def test_block_with_1d_arrays_multiple_rows(self):
-        a = np.array([1, 2, 3])
-        b = np.array([2, 3, 4])
-        expected = np.array([[1, 2, 3, 2, 3, 4],
-                             [1, 2, 3, 2, 3, 4]])
+    def test_block_with_1d_arrays_multiple_rows(self, size_multiplier):
+        # a = np.array([1, 2, 3])
+        # b = np.array([2, 3, 4])
+        a = np.full(3 * size_multiplier, fill_value=3)
+        b = np.full(3 * size_multiplier, fill_value=4)
+
+        expected = np.zeros((2, 6 * size_multiplier))
+        expected[..., :3 * size_multiplier] = 3
+        expected[..., 3 * size_multiplier:] = 4
         result = block([[a, b], [a, b]])
         assert_equal(expected, result)
 
-    def test_block_with_1d_arrays_column_wise(self):
+    def test_block_with_1d_arrays_column_wise(self, size_multiplier):
         # # # 1-D vectors are treated as row arrays
-        a_1d = np.array([1, 2, 3])
-        b_1d = np.array([2, 3, 4])
-        expected = np.array([[1, 2, 3],
-                             [2, 3, 4]])
+        a_1d = np.full(3 * size_multiplier, fill_value=3)
+        b_1d = np.full(3 * size_multiplier, fill_value=4)
+        expected = np.zeros((2, 3 * size_multiplier))
+        expected[0] = 3
+        expected[1] = 4
         result = block([[a_1d], [b_1d]])
         assert_equal(expected, result)
 
-    def test_block_mixed_1d_and_2d(self):
-        a_2d = np.ones((2, 2))
-        b_1d = np.array([2, 2])
+    def test_block_mixed_1d_and_2d(self, size_multiplier):
+        a_2d = np.ones((2, 2 * size_multiplier))
+        b_1d = np.full(2 * size_multiplier, fill_value=2)
         result = block([[a_2d], [b_1d]])
-        expected = np.array([[1, 1],
-                             [1, 1],
-                             [2, 2]])
+        expected = np.zeros((3, 2 * size_multiplier))
+        expected[:2] = 1
+        expected[2] = 2
         assert_equal(expected, result)
 
-    def test_block_complicated(self):
+    def test_block_complicated(self, size_multiplier):
         # a bit more complicated
-        one_2d = np.array([[1, 1, 1]])
-        two_2d = np.array([[2, 2, 2]])
-        three_2d = np.array([[3, 3, 3, 3, 3, 3]])
-        four_1d = np.array([4, 4, 4, 4, 4, 4])
+        one_2d = np.full((1, 3 * size_multiplier), fill_value=1)
+        two_2d = np.full((1, 3 * size_multiplier), fill_value=2)
+        three_2d = np.full((1, 6 * size_multiplier), fill_value=3)
+        four_1d = np.full((6 * size_multiplier), fill_value=4)
         five_0d = np.array(5)
-        six_1d = np.array([6, 6, 6, 6, 6])
-        zero_2d = np.zeros((2, 6))
+        six_1d = np.full((1, 6 * size_multiplier - 1), fill_value=6)
+        zero_2d = np.zeros((2, 6 * size_multiplier))
 
-        expected = np.array([[1, 1, 1, 2, 2, 2],
-                             [3, 3, 3, 3, 3, 3],
-                             [4, 4, 4, 4, 4, 4],
-                             [5, 6, 6, 6, 6, 6],
-                             [0, 0, 0, 0, 0, 0],
-                             [0, 0, 0, 0, 0, 0]])
+        expected = np.zeros((6, 6 * size_multiplier))
+        expected[0, :3 * size_multiplier] = 1
+        expected[0, 3 * size_multiplier:] = 2
+        expected[1, :] = 3
+        expected[2, :] = 4
+        expected[3, 0] = 5
+        expected[3, 1:] = 6
 
         result = block([[one_2d, two_2d],
                         [three_2d],
@@ -443,14 +474,14 @@ class TestBlock(object):
                         [zero_2d]])
         assert_equal(result, expected)
 
-    def test_nested(self):
-        one = np.array([1, 1, 1])
-        two = np.array([[2, 2, 2], [2, 2, 2], [2, 2, 2]])
-        three = np.array([3, 3, 3])
-        four = np.array([4, 4, 4])
+    def test_nested(self, size_multiplier):
+        one = np.full(3 * size_multiplier, fill_value=1)
+        two = np.full((3, 3 * size_multiplier), fill_value=2)
+        three = np.full(3 * size_multiplier, fill_value=3)
+        four = np.full(3 * size_multiplier, fill_value=4)
         five = np.array(5)
-        six = np.array([6, 6, 6, 6, 6])
-        zero = np.zeros((2, 6))
+        six = np.full(6 * size_multiplier-1, fill_value=6)
+        zero = np.zeros((2, 6 * size_multiplier))
 
         result = np.block([
             [
@@ -464,27 +495,30 @@ class TestBlock(object):
             [five, six],
             [zero]
         ])
-        expected = np.array([[1, 1, 1, 2, 2, 2],
-                             [3, 3, 3, 2, 2, 2],
-                             [4, 4, 4, 2, 2, 2],
-                             [5, 6, 6, 6, 6, 6],
-                             [0, 0, 0, 0, 0, 0],
-                             [0, 0, 0, 0, 0, 0]])
+
+        expected = np.zeros((6, 6 * size_multiplier))
+        expected[0, :3*size_multiplier] = 1
+        expected[1, :3*size_multiplier] = 3
+        expected[2, :3*size_multiplier] = 4
+        expected[:3, 3*size_multiplier:] = 2
+        expected[3, 0] = 5
+        expected[3, 1:] = 6
 
         assert_equal(result, expected)
 
-    def test_3d(self):
-        a000 = np.ones((2, 2, 2), int) * 1
+    def test_3d(self, size_multiplier):
+        size_multiplier = int(np.floor(size_multiplier / 5 / 5)) + 1
+        a000 = np.full((2, 2, 2 * size_multiplier), dtype=int, fill_value=1)
 
-        a100 = np.ones((3, 2, 2), int) * 2
-        a010 = np.ones((2, 3, 2), int) * 3
-        a001 = np.ones((2, 2, 3), int) * 4
+        a100 = np.full((3, 2, 2 * size_multiplier), dtype=int, fill_value=2)
+        a010 = np.full((2, 3, 2 * size_multiplier), dtype=int, fill_value=3)
+        a001 = np.full((2, 2, 3 * size_multiplier), dtype=int, fill_value=4)
 
-        a011 = np.ones((2, 3, 3), int) * 5
-        a101 = np.ones((3, 2, 3), int) * 6
-        a110 = np.ones((3, 3, 2), int) * 7
+        a011 = np.full((2, 3, 3 * size_multiplier), dtype=int, fill_value=5)
+        a101 = np.full((3, 2, 3 * size_multiplier), dtype=int, fill_value=6)
+        a110 = np.full((3, 3, 2 * size_multiplier), dtype=int, fill_value=7)
 
-        a111 = np.ones((3, 3, 3), int) * 8
+        a111 = np.full((3, 3, 3 * size_multiplier), dtype=int, fill_value=8)
 
         result = np.block([
             [
@@ -496,87 +530,85 @@ class TestBlock(object):
                 [a110, a111],
             ]
         ])
-        expected = array([[[1, 1, 4, 4, 4],
-                           [1, 1, 4, 4, 4],
-                           [3, 3, 5, 5, 5],
-                           [3, 3, 5, 5, 5],
-                           [3, 3, 5, 5, 5]],
 
-                          [[1, 1, 4, 4, 4],
-                           [1, 1, 4, 4, 4],
-                           [3, 3, 5, 5, 5],
-                           [3, 3, 5, 5, 5],
-                           [3, 3, 5, 5, 5]],
+        expected = np.zeros((5, 5, 5 * size_multiplier), int)
+        expected[:2, :2, :2 * size_multiplier] = 1
+        expected[:2, :2, 2 * size_multiplier:] = 4
 
-                          [[2, 2, 6, 6, 6],
-                           [2, 2, 6, 6, 6],
-                           [7, 7, 8, 8, 8],
-                           [7, 7, 8, 8, 8],
-                           [7, 7, 8, 8, 8]],
+        expected[:2, 2:, :2 * size_multiplier] = 3
+        expected[:2, 2:, 2 * size_multiplier:] = 5
 
-                          [[2, 2, 6, 6, 6],
-                           [2, 2, 6, 6, 6],
-                           [7, 7, 8, 8, 8],
-                           [7, 7, 8, 8, 8],
-                           [7, 7, 8, 8, 8]],
+        expected[2:, :2, :2 * size_multiplier] = 2
+        expected[2:, 2:, :2 * size_multiplier] = 7
 
-                          [[2, 2, 6, 6, 6],
-                           [2, 2, 6, 6, 6],
-                           [7, 7, 8, 8, 8],
-                           [7, 7, 8, 8, 8],
-                           [7, 7, 8, 8, 8]]])
-
+        expected[2:, :2, 2 * size_multiplier:] = 6
+        expected[2:, 2:, 2 * size_multiplier:] = 8
         assert_array_equal(result, expected)
 
-    def test_block_with_mismatched_shape(self):
-        a = np.array([0, 0])
-        b = np.eye(2)
+    def test_block_with_mismatched_shape(self, size_multiplier):
+        a = np.zeros(2 * size_multiplier)
+        b = np.eye(2 * size_multiplier, 2)
         assert_raises(ValueError, np.block, [a, b])
         assert_raises(ValueError, np.block, [b, a])
 
-    def test_no_lists(self):
-        assert_equal(np.block(1),         np.array(1))
-        assert_equal(np.block(np.eye(3)), np.eye(3))
+    def test_no_lists(self, size_multiplier):
+        assert_equal(np.block(1), np.array(1))
+        assert_equal(np.block(np.eye(2 * size_multiplier, 2)),
+                     np.eye(2 * size_multiplier, 2))
 
-    def test_invalid_nesting(self):
+    def test_invalid_nesting(self, size_multiplier):
         msg = 'depths are mismatched'
-        assert_raises_regex(ValueError, msg, np.block, [1, [2]])
+        assert_raises_regex(ValueError, msg, np.block,
+                            [2, [np.ones(size_multiplier)]])
         assert_raises_regex(ValueError, msg, np.block, [1, []])
-        assert_raises_regex(ValueError, msg, np.block, [[1], 2])
+        assert_raises_regex(ValueError, msg, np.block,
+                            [[np.ones(size_multiplier)], 2])
         assert_raises_regex(ValueError, msg, np.block, [[], 2])
         assert_raises_regex(ValueError, msg, np.block, [
-            [[1], [2]],
-            [[3, 4]],
-            [5]  # missing brackets
+            [[np.ones(size_multiplier) * 1], [np.ones(size_multiplier) * 2]],
+            [[np.ones(size_multiplier) * 3, np.ones(size_multiplier) * 4]],
+            [np.ones(size_multiplier) * 5]  # missing internal brackets
         ])
 
-    def test_empty_lists(self):
+    def test_empty_lists(self, size_multiplier):
         assert_raises_regex(ValueError, 'empty', np.block, [])
         assert_raises_regex(ValueError, 'empty', np.block, [[]])
-        assert_raises_regex(ValueError, 'empty', np.block, [[1], []])
+        assert_raises_regex(ValueError, 'empty', np.block,
+                            [[np.ones(size_multiplier)], []])
 
-    def test_tuple(self):
-        assert_raises_regex(TypeError, 'tuple', np.block, ([1, 2], [3, 4]))
-        assert_raises_regex(TypeError, 'tuple', np.block, [(1, 2), (3, 4)])
+    def test_tuple(self, size_multiplier):
+        assert_raises_regex(
+            TypeError, 'tuple', np.block,
+            ([np.ones(size_multiplier) * 1, np.ones(size_multiplier) * 2],
+             [np.ones(size_multiplier) * 3, np.ones(size_multiplier) * 4]))
+        assert_raises_regex(
+            TypeError, 'tuple', np.block,
+            [(np.ones(size_multiplier) * 1, np.ones(size_multiplier) * 2),
+             (np.ones(size_multiplier) * 3, np.ones(size_multiplier) * 4)])
 
-    def test_different_ndims(self):
+    def test_different_ndims(self, size_multiplier):
         a = 1.
-        b = 2 * np.ones((1, 2))
-        c = 3 * np.ones((1, 1, 3))
+        b = 2 * np.ones((1, 2 * size_multiplier))
+        c = 3 * np.ones((1, 1, 3 * size_multiplier))
 
         result = np.block([a, b, c])
-        expected = np.array([[[1., 2., 2., 3., 3., 3.]]])
+
+        expected = np.zeros((1, 1, 1 + b.size + c.size))
+        expected[..., 0] = 1
+        expected[..., 1:b.size + 1] = 2
+        expected[..., b.size + 1:] = 3
 
         assert_equal(result, expected)
 
-    def test_different_ndims_depths(self):
+    def test_different_ndims_depths(self, size_multiplier):
         a = 1.
-        b = 2 * np.ones((1, 2))
-        c = 3 * np.ones((1, 2, 3))
+        b = 2 * np.ones((1, (2 + 1) * size_multiplier - 1))
+        c = 3 * np.ones((1, 2, 3 * size_multiplier))
 
         result = np.block([[a, b], [c]])
-        expected = np.array([[[1., 2., 2.],
-                              [3., 3., 3.],
-                              [3., 3., 3.]]])
+        expected = np.zeros((1, 3, 3 * size_multiplier))
+        expected[..., 0, 0] = 1
+        expected[..., 0, 1:] = 2
+        expected[..., 1:, :] = 3
 
         assert_equal(result, expected)
