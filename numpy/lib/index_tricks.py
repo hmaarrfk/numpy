@@ -518,7 +518,7 @@ class CClass(AxisConcatenator):
     useful because of its common occurrence. In particular, arrays will be
     stacked along their last axis after being upgraded to at least 2-D with
     1's post-pended to the shape (column vectors made out of 1-D arrays).
-    
+
     See Also
     --------
     column_stack : Stack 1-D arrays as columns into a 2-D array.
@@ -687,10 +687,11 @@ class ndindex(object):
         self._shape = shape
         self._order = order
 
-        range_indices = tuple(sl.indices(s) for s, sl in zip(shape, slices))
+        self._range_indices = tuple(sl.indices(s)
+                                    for s, sl in zip(shape, slices))
         self._it = itertools.product(
             *(range(*i) if order == 'C' else reversed(range(*i))
-            for i in range_indices))
+            for i in self._range_indices))
 
     def __iter__(self):
         return self
@@ -717,7 +718,7 @@ class ndindex(object):
         """
         return next(self._it)
 
-    def __contains__(self, value):
+    def __contains__(self, index):
         """
         Standard membership method. Checks if a given tuple is in the iterator.
 
@@ -728,9 +729,20 @@ class ndindex(object):
 
         """
         # Make it a tuple
-        if not isinstance(value, tuple):
-            value = (value,)
-        return value in self._it
+        if not isinstance(index, tuple):
+            index = (index,)
+        if len(index) != len(self._shape):
+            return False
+
+        for i, range_indices in zip(index, self._range_indices):
+            if self._order == 'C':
+                r = range(*range_indices)
+            else:
+                r = reversed(range(*range_indices))
+            if i not in r:
+                return False
+        else:
+            return True
 
     def __reversed__(self):
         """
