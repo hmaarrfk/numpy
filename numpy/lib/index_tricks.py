@@ -644,7 +644,7 @@ class ndindex(object):
     (6, 0)
     (6, 2)
 
-    Iterating in Fortran is also possible
+    Iterating in reversed order is also possible
 
     >>> for i in reversed(np.ndindex(3, 2)):
     ...:    print(i)
@@ -750,12 +750,53 @@ class ndindex(object):
         if len(index) != len(self._shape):
             return False
 
-        # We can't check containement in _it as it will traverse it
+        # We can't check containement in self._it as it will traverse it.
         # Do we need to check if we have already passed the value?
         # If so, how? do we need to cache that state too?
         # How would we even check?
         # What happens if the slice is np.s_[::-1, ::1, ::-1, ::1]
         # i.e. not strictly C or Fortran
+        #
+        # The python built-in function range doesn't behave like this.
+        # Range itself is just an object.
+        # __iter__ returns a seperate iterator.
+        # for loops are free to traverse that iterator.
+        # containement in that iterator is checked by traversal
+        # containment in range is not.
+        #
+        # I suggest I refactor all these addition into a new
+        # class `ndrange`. That classe's goals would be to behave more like
+        # python3 range
+        # At the same time, I would refactoro the first parameter and force
+        # the shape to be a tuple
+        """
+        In [11]: five = range(5)
+
+        In [12]: iter_five = five.__iter__()
+
+        In [13]: 3 in five
+        Out[13]: True
+
+        In [14]: 3 in five
+        Out[14]: True
+
+        In [15]: 3 in five
+        Out[15]: True
+
+        In [16]: 3 in iter_five
+        Out[16]: True
+
+        In [17]: 3 in iter_five
+        Out[17]: False
+
+        In [18]: iter_five = iter(five)
+
+        In [19]: 3 in iter_five
+        Out[19]: True
+
+        In [20]: 3 in iter_five
+        Out[20]: False
+        """
 
         for i, range_indices in zip(index, self._range_indices):
             if i not in range(*range_indices):
