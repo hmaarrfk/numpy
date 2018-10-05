@@ -696,6 +696,21 @@ class ndindex(object):
         """
         return next(self._it)
 
+    def __contains__(self, value):
+        """
+        Standard membership method. Checks if a given tuple is in the iterator.
+
+        Returns
+        -------
+        membership: bool
+            True if the iterator contains the member.
+
+        """
+        # Make it a tuple
+        if not isinstance(value, tuple):
+            value = (value,)
+        return value in self._it
+
     next = __next__
 
 
