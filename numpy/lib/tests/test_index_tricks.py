@@ -11,6 +11,7 @@ from numpy.lib.index_tricks import (
     )
 
 import pytest
+from random import shuffle
 
 
 class TestRavelUnravelIndex(object):
@@ -396,7 +397,12 @@ def ndindex_tester_helper(expected, shape, slices=(), order=None,
         i = reversed(i)
         expected.reverse()
 
-    for e in expected:
+    shuffled = expected.copy()
+    shuffle(shuffled)
+    # Make sure we can assert identity in a random order.
+    # This is important since if `__contains__` traverses the iterator,
+    # Then it won't find an element when probed repeatedly.
+    for e in shuffled:
         assert e in i
 
     x = list(i)
@@ -419,6 +425,6 @@ def test_ndindex_strided(reversals, use_keyword):
                           order='C', use_keyword=use_keyword)
     expected = [(1, 0), (3, 0),
                 (1, 3), (3, 3),
-                (1, 6), (3, 6)]                
+                (1, 6), (3, 6)]
     ndindex_tester_helper(expected, shape=(4, 9), slices=np.s_[1::2, ::3],
                           order='F', use_keyword=use_keyword)
