@@ -1,5 +1,6 @@
 from __future__ import division, absolute_import, print_function
 
+import itertools
 import sys
 import math
 
@@ -602,6 +603,10 @@ class ndindex(object):
     `*args` : ints
       The size of each dimension of the array.
 
+    slices : tuple of slices (or single slice)
+        The slice which would be taken in the desired array of the provided
+        shape.
+
     See Also
     --------
     ndenumerate, flatiter
@@ -617,15 +622,54 @@ class ndindex(object):
     (2, 0, 0)
     (2, 1, 0)
 
+    The provided shape can be in the form of a tuple as well
+
+    >>> for index in np.ndindex((4, 2)):
+    ...     print(index)
+    (0, 0)
+    (0, 1)
+    (1, 0)
+    (1, 1)
+    (2, 0)
+    (2, 1)
+    (3, 0)
+    (3, 1)
+
+    Slicing into the shape is also possible
+
+    >>> for index in np.ndindex((10, 4), np.s_[::6, ::2]):
+    ...     print(index)
+    (0, 0)
+    (0, 2)
+    (6, 0)
+    (6, 2)
+
     """
 
-    def __init__(self, *shape):
+    def __init__(self, *shape, slices=()):
+        # UGLY UGLY Hack to ensure that the following works
+        # np.ndindex((3, 2), np.s_[::2, ::2])
+        if slices == () and len(shape) != 0:
+            if (isinstance(shape[-1], slice) or
+                    (isinstance(shape[-1], tuple) and
+                     len(shape[-1]) != 0 and
+                     isinstance(shape[-1][0], slice))):
+                slices = shape[-1]
+                shape = shape[:-1]
+
         if len(shape) == 1 and isinstance(shape[0], tuple):
             shape = shape[0]
-        x = as_strided(_nx.zeros(1), shape=shape,
-                       strides=_nx.zeros_like(shape))
-        self._it = _nx.nditer(x, flags=['multi_index', 'zerosize_ok'],
-                              order='C')
+
+        if isinstance(slices, slice):
+            slices = (slices,)
+        if len(slices) > len(shape):
+            raise ValueError('too many slices for shape')
+        # append some None slices to ensure slices has at least
+        # the same dimensions as shape match up
+        # with python 3, one could use itertools.zip_longest
+        slices = slices + (slice(None),) * (len(shape) - len(slices))
+        self._it = itertools.product(*(range(*sl.indices(s))
+                                     for s, sl in zip(shape, slices)))
 
     def __iter__(self):
         return self
@@ -650,8 +694,7 @@ class ndindex(object):
             iteration.
 
         """
-        next(self._it)
-        return self._it.multi_index
+        return next(self._it)
 
     next = __next__
 
