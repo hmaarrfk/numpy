@@ -657,9 +657,13 @@ class ndindex(object):
 
     """
 
-    def __init__(self, *shape, slices=(), order='C'):
+    def __init__(self, *shape, slices=(), order='C', reverse=False):
         # UGLY UGLY Hack to ensure that the following works
         # np.ndindex((3, 2), np.s_[::2, ::2])
+        if len(shape) != 0 and isinstance(shape[-1], bool):
+            reverse = shape[-1]
+            shape = shape[:-1]
+
         if len(shape) != 0 and isinstance(shape[-1], str):
             order = shape[-1]
             shape = shape[:-1]
@@ -677,21 +681,29 @@ class ndindex(object):
 
         if isinstance(slices, slice):
             slices = (slices,)
+
         if len(slices) > len(shape):
             raise ValueError('too many slices for shape')
         # append some None slices to ensure slices has at least
         # the same dimensions as shape match up
         # with python 3, one could use itertools.zip_longest
         slices = slices + (slice(None),) * (len(shape) - len(slices))
+
         self._slices = slices
         self._shape = shape
         self._order = order
+        self._reverse = reverse
 
         self._range_indices = tuple(sl.indices(s)
                                     for s, sl in zip(shape, slices))
-        self._it = itertools.product(
-            *(range(*i) if order == 'C' else reversed(range(*i))
-            for i in self._range_indices))
+        if self._order == 'F':
+            self._it = itertools.product(
+                *(range(*i) if not reverse else reversed(range(*i))
+                for i in reversed(self._range_indices)))
+        else:
+            self._it = itertools.product(
+                *(range(*i) if not reverse else reversed(range(*i))
+                for i in self._range_indices))
 
     def __iter__(self):
         return self
@@ -716,7 +728,11 @@ class ndindex(object):
             iteration.
 
         """
-        return next(self._it)
+        index = next(self._it)
+        if self._order == 'C':
+            return index
+        else:
+            return index[::-1]
 
     def __contains__(self, index):
         """
@@ -734,12 +750,15 @@ class ndindex(object):
         if len(index) != len(self._shape):
             return False
 
+        # We can't check containement in _it as it will traverse it
+        # Do we need to check if we have already passed the value?
+        # If so, how? do we need to cache that state too?
+        # How would we even check?
+        # What happens if the slice is np.s_[::-1, ::1, ::-1, ::1]
+        # i.e. not strictly C or Fortran
+
         for i, range_indices in zip(index, self._range_indices):
-            if self._order == 'C':
-                r = range(*range_indices)
-            else:
-                r = reversed(range(*range_indices))
-            if i not in r:
+            if i not in range(*range_indices):
                 return False
         else:
             return True
@@ -751,7 +770,7 @@ class ndindex(object):
 
         """
         return ndindex(self._shape, slices=self._slices,
-                       order='C' if self._order == 'F' else 'F')
+                       order=self._order, reverse=not self._reverse)
 
     next = __next__
 

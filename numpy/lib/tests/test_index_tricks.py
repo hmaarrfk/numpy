@@ -417,6 +417,8 @@ def test_ndindex_strided(reversals, use_keyword):
                           use_keyword=use_keyword)
     ndindex_tester_helper(expected, shape=(4, 9), slices=np.s_[1::2, ::3],
                           order='C', use_keyword=use_keyword)
-    expected.reverse()
+    expected = [(1, 0), (3, 0),
+                (1, 3), (3, 3),
+                (1, 6), (3, 6)]                
     ndindex_tester_helper(expected, shape=(4, 9), slices=np.s_[1::2, ::3],
                           order='F', use_keyword=use_keyword)
