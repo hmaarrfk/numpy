@@ -10,6 +10,8 @@ from numpy.lib.index_tricks import (
     index_exp, ndindex, r_, s_, ix_
     )
 
+import pytest
+
 
 class TestRavelUnravelIndex(object):
     def test_basic(self):
@@ -376,3 +378,45 @@ def test_ndindex():
     # Make sure 0-sized ndindex works correctly
     x = list(ndindex(*[0]))
     assert_equal(x, [])
+
+
+def ndindex_tester_helper(expected, shape, slices=(), order=None,
+                          reversals=0, use_keyword=False):
+
+    if not use_keyword and order is None:
+        i = ndindex(shape, slices)
+    elif not use_keyword and order is not None:
+        i = ndindex(shape, slices, order)
+    elif use_keyword and order is None:
+        i = ndindex(shape, slices=slices)
+    else:  # use_keywords and order is not None
+        i = ndindex(shape, slices=slices, order=order)
+
+    for _ in range(reversals):
+        i = reversed(i)
+        expected.reverse()
+
+    for e in expected:
+        assert e in i
+
+    x = list(i)
+    assert_array_equal(x, expected)
+
+@pytest.mark.parametrize('reversals', [0, 1, 2])
+@pytest.mark.parametrize('use_keyword', [False, True])
+def test_ndindex_strided(reversals, use_keyword):
+    # 1D
+    expected = [(0,), (2,)]
+    ndindex_tester_helper(expected, shape=5, slices=slice(0, 4, 2),
+                          use_keyword=use_keyword)
+
+    # 2D
+    expected = [(1, 0), (1, 3), (1, 6),
+                (3, 0), (3, 3), (3, 6)]
+    ndindex_tester_helper(expected, shape=(4, 9), slices=np.s_[1::2, ::3],
+                          use_keyword=use_keyword)
+    ndindex_tester_helper(expected, shape=(4, 9), slices=np.s_[1::2, ::3],
+                          order='C', use_keyword=use_keyword)
+    expected.reverse()
+    ndindex_tester_helper(expected, shape=(4, 9), slices=np.s_[1::2, ::3],
+                          order='F', use_keyword=use_keyword)
