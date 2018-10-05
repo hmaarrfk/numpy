@@ -644,11 +644,26 @@ class ndindex(object):
     (6, 0)
     (6, 2)
 
+    Iterating in Fortran is also possible
+
+    >>> for i in reversed(np.ndindex(3, 2)):
+    ...:    print(i)
+    (2, 1)
+    (2, 0)
+    (1, 1)
+    (1, 0)
+    (0, 1)
+    (0, 0)
+
     """
 
-    def __init__(self, *shape, slices=()):
+    def __init__(self, *shape, slices=(), order='C'):
         # UGLY UGLY Hack to ensure that the following works
         # np.ndindex((3, 2), np.s_[::2, ::2])
+        if len(shape) != 0 and isinstance(shape[-1], str):
+            order = shape[-1]
+            shape = shape[:-1]
+
         if slices == () and len(shape) != 0:
             if (isinstance(shape[-1], slice) or
                     (isinstance(shape[-1], tuple) and
@@ -668,8 +683,14 @@ class ndindex(object):
         # the same dimensions as shape match up
         # with python 3, one could use itertools.zip_longest
         slices = slices + (slice(None),) * (len(shape) - len(slices))
-        self._it = itertools.product(*(range(*sl.indices(s))
-                                     for s, sl in zip(shape, slices)))
+        self._slices = slices
+        self._shape = shape
+        self._order = order
+
+        range_indices = tuple(sl.indices(s) for s, sl in zip(shape, slices))
+        self._it = itertools.product(
+            *(range(*i) if order == 'C' else reversed(range(*i))
+            for i in range_indices))
 
     def __iter__(self):
         return self
@@ -710,6 +731,15 @@ class ndindex(object):
         if not isinstance(value, tuple):
             value = (value,)
         return value in self._it
+
+    def __reversed__(self):
+        """
+        Standard iteration reversal method. This is useful to generate an
+        Fortran ordered iterator.
+
+        """
+        return ndindex(self._shape, slices=self._slices,
+                       order='C' if self._order == 'F' else 'F')
 
     next = __next__
 
