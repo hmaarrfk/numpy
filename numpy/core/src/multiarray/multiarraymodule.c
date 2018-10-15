@@ -1861,6 +1861,37 @@ fail:
     return NULL;
 }
 
+static PyObject *
+array_zeros_like(PyObject *NPY_UNUSED(ignored), PyObject *args, PyObject *kwds)
+{
+
+    static char *kwlist[] = {"prototype","dtype","order","subok",NULL};
+    PyArrayObject *prototype = NULL;
+    PyArray_Descr *dtype = NULL;
+    NPY_ORDER order = NPY_KEEPORDER;
+    PyArrayObject *ret = NULL;
+    int subok = 1;
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O&|O&O&i:zero_like", kwlist,
+                &PyArray_Converter, &prototype,
+                &PyArray_DescrConverter2, &dtype,
+                &PyArray_OrderConverter, &order,
+                &subok)) {
+        goto fail;
+    }
+    /* steals the reference to dtype if it's not NULL */
+    ret = (PyArrayObject *)PyArray_NewZerosLikeArray(prototype,
+                                            order, dtype, subok);
+    Py_DECREF(prototype);
+
+    return (PyObject *)ret;
+
+fail:
+    Py_XDECREF(prototype);
+    Py_XDECREF(dtype);
+    return NULL;
+}
+
 /*
  * This function is needed for supporting Pickles of
  * numpy scalar objects.
@@ -4388,6 +4419,9 @@ static struct PyMethodDef array_module_methods[] = {
         METH_VARARGS, NULL},
     {"_add_newdoc_ufunc", (PyCFunction)add_newdoc_ufunc,
         METH_VARARGS, NULL},
+    {"zeros_like",
+        (PyCFunction)array_zeros_like,
+        METH_VARARGS|METH_KEYWORDS, NULL},
     {NULL, NULL, 0, NULL}                /* sentinel */
 };
 

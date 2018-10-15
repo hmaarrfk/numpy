@@ -1275,6 +1275,110 @@ PyArray_NewLikeArray(PyArrayObject *prototype, NPY_ORDER order,
 }
 
 /*NUMPY_API
+ * Creates a new zero filled array with the same shape as the
+ * provided one, with possible memory layout order and data
+ * type changes.
+ *
+ * prototype - The array the new one should be like.
+ * order     - NPY_CORDER - C-contiguous result.
+ *             NPY_FORTRANORDER - Fortran-contiguous result.
+ *             NPY_ANYORDER - Fortran if prototype is Fortran, C otherwise.
+ *             NPY_KEEPORDER - Keeps the axis ordering of prototype.
+ * dtype     - If not NULL, overrides the data type of the result.
+ * subok     - If 1, use the prototype's array subtype, otherwise
+ *             always create a base-class array.
+ *
+ * NOTE: If dtype is not NULL, steals the dtype reference.  On failure or when
+ * dtype->subarray is true, dtype will be decrefed.
+ */
+NPY_NO_EXPORT PyArrayObject *
+PyArray_NewZerosLikeArray(PyArrayObject *prototype, NPY_ORDER order,
+                         PyArray_Descr *dtype, int subok)
+{
+    PyArrayObject *ret = NULL;
+    int ndim = PyArray_NDIM(prototype);
+    int stole_ref = 0;
+
+    /* If no override data type, use the one from the prototype */
+    if (dtype == NULL) {
+        stole_ref = 1;
+        dtype = PyArray_DESCR(prototype);
+        Py_INCREF(dtype);
+    }
+
+    /* Handle ANYORDER and simple KEEPORDER cases */
+    switch (order) {
+        case NPY_ANYORDER:
+            order = PyArray_ISFORTRAN(prototype) ?
+                                    NPY_FORTRANORDER : NPY_CORDER;
+            break;
+        case NPY_KEEPORDER:
+            if (PyArray_IS_C_CONTIGUOUS(prototype) || ndim <= 1) {
+                order = NPY_CORDER;
+                break;
+            }
+            else if (PyArray_IS_F_CONTIGUOUS(prototype)) {
+                order = NPY_FORTRANORDER;
+                break;
+            }
+            break;
+        default:
+            break;
+    }
+
+    /* If it's not KEEPORDER, this is simple */
+    if (order != NPY_KEEPORDER) {
+        ret = (PyArrayObject *) PyArray_NewFromDescr_int(
+                subok ? Py_TYPE(prototype) : &PyArray_Type,
+                dtype, ndim, PyArray_DIMS(prototype), NULL,
+                NULL, order, subok ? (PyObject *)prototype : NULL,
+                NULL,
+                1,  // zeroed
+                0);
+    }
+    /* KEEPORDER needs some analysis of the strides */
+    else {
+        npy_intp strides[NPY_MAXDIMS], stride;
+        npy_intp *shape = PyArray_DIMS(prototype);
+        npy_stride_sort_item strideperm[NPY_MAXDIMS];
+        int idim;
+
+        PyArray_CreateSortedStridePerm(PyArray_NDIM(prototype),
+                                        PyArray_STRIDES(prototype),
+                                        strideperm);
+
+        /* Build the new strides */
+        stride = dtype->elsize;
+        for (idim = ndim-1; idim >= 0; --idim) {
+            npy_intp i_perm = strideperm[idim].perm;
+            strides[i_perm] = stride;
+            stride *= shape[i_perm];
+        }
+
+        /* Finally, allocate the array */
+        ret = (PyArrayObject *)PyArray_NewFromDescr_int(
+                subok ? Py_TYPE(prototype) : &PyArray_Type,
+                dtype, ndim, shape, strides,
+                NULL, 0, subok ? (PyObject *)prototype : NULL,
+                NULL, 1,  // zeroed
+                0);
+    }
+
+    /* handle objects */
+    if (PyDataType_REFCHK(PyArray_DESCR(ret))) {
+        if (_zerofill(ret) < 0) {
+            if (stole_ref) {
+              Py_DECREF(dtype);
+            }
+            Py_DECREF(ret);
+            return NULL;
+        }
+    }
+
+    return ret;
+}
+
+/*NUMPY_API
  * Generic new array creation routine.
  */
 NPY_NO_EXPORT PyObject *

@@ -24,6 +24,7 @@ from .multiarray import (
     min_scalar_type, ndarray, nditer, nested_iters, promote_types,
     putmask, result_type, set_numeric_ops, shares_memory, vdot, where,
     zeros, normalize_axis_index)
+from .multiarray import zeros_like as _zeros_like
 if sys.version_info[0] < 3:
     from .multiarray import newbuffer, getbuffer
 
@@ -158,10 +159,10 @@ def zeros_like(a, dtype=None, order='K', subok=True):
     array([ 0.,  0.,  0.])
 
     """
-    res = empty_like(a, dtype=dtype, order=order, subok=subok)
+    res = _zeros_like(a, dtype=dtype, order=order, subok=subok)
     # needed instead of a 0 to get same result as zeros for for string dtypes
-    z = zeros(1, dtype=res.dtype)
-    multiarray.copyto(res, z, casting='unsafe')
+    # z = zeros(1, dtype=res.dtype)
+    # multiarray.copyto(res, z, casting='unsafe')
     return res
 
 
