@@ -1,5 +1,6 @@
 from __future__ import division, absolute_import, print_function
 
+import itertools
 import sys
 import math
 
@@ -520,7 +521,7 @@ class CClass(AxisConcatenator):
     useful because of its common occurrence. In particular, arrays will be
     stacked along their last axis after being upgraded to at least 2-D with
     1's post-pended to the shape (column vectors made out of 1-D arrays).
-    
+
     See Also
     --------
     column_stack : Stack 1-D arrays as columns into a 2-D array.
@@ -605,6 +606,10 @@ class ndindex(object):
     `*args` : ints
       The size of each dimension of the array.
 
+    slices : tuple of slices (or single slice)
+        The slice which would be taken in the desired array of the provided
+        shape.
+
     See Also
     --------
     ndenumerate, flatiter
@@ -620,15 +625,88 @@ class ndindex(object):
     (2, 0, 0)
     (2, 1, 0)
 
+    The provided shape can be in the form of a tuple as well
+
+    >>> for index in np.ndindex((4, 2)):
+    ...     print(index)
+    (0, 0)
+    (0, 1)
+    (1, 0)
+    (1, 1)
+    (2, 0)
+    (2, 1)
+    (3, 0)
+    (3, 1)
+
+    Slicing into the shape is also possible
+
+    >>> for index in np.ndindex((10, 4), np.s_[::6, ::2]):
+    ...     print(index)
+    (0, 0)
+    (0, 2)
+    (6, 0)
+    (6, 2)
+
+    Iterating in reversed order is also possible
+
+    >>> for i in reversed(np.ndindex(3, 2)):
+    ...:    print(i)
+    (2, 1)
+    (2, 0)
+    (1, 1)
+    (1, 0)
+    (0, 1)
+    (0, 0)
+
     """
 
-    def __init__(self, *shape):
+    def __init__(self, *shape, slices=(), order='C', reverse=False):
+        # UGLY UGLY Hack to ensure that the following works
+        # np.ndindex((3, 2), np.s_[::2, ::2])
+        if len(shape) != 0 and isinstance(shape[-1], bool):
+            reverse = shape[-1]
+            shape = shape[:-1]
+
+        if len(shape) != 0 and isinstance(shape[-1], str):
+            order = shape[-1]
+            shape = shape[:-1]
+
+        if slices == () and len(shape) != 0:
+            if (isinstance(shape[-1], slice) or
+                    (isinstance(shape[-1], tuple) and
+                     len(shape[-1]) != 0 and
+                     isinstance(shape[-1][0], slice))):
+                slices = shape[-1]
+                shape = shape[:-1]
+
         if len(shape) == 1 and isinstance(shape[0], tuple):
             shape = shape[0]
-        x = as_strided(_nx.zeros(1), shape=shape,
-                       strides=_nx.zeros_like(shape))
-        self._it = _nx.nditer(x, flags=['multi_index', 'zerosize_ok'],
-                              order='C')
+
+        if isinstance(slices, slice):
+            slices = (slices,)
+
+        if len(slices) > len(shape):
+            raise ValueError('too many slices for shape')
+        # append some None slices to ensure slices has at least
+        # the same dimensions as shape match up
+        # with python 3, one could use itertools.zip_longest
+        slices = slices + (slice(None),) * (len(shape) - len(slices))
+
+        self._slices = slices
+        self._shape = shape
+        self._order = order
+        self._reverse = reverse
+
+        self._range_indices = tuple(sl.indices(s)
+                                    for s, sl in zip(shape, slices))
+        if self._order == 'F':
+            self._it = itertools.product(
+                *(range(*i) if not reverse else reversed(range(*i))
+                for i in reversed(self._range_indices)))
+        else:
+            self._it = itertools.product(
+                *(range(*i) if not reverse else reversed(range(*i))
+                for i in self._range_indices))
 
     def __iter__(self):
         return self
@@ -653,8 +731,90 @@ class ndindex(object):
             iteration.
 
         """
-        next(self._it)
-        return self._it.multi_index
+        index = next(self._it)
+        if self._order == 'C':
+            return index
+        else:
+            return index[::-1]
+
+    def __contains__(self, index):
+        """
+        Standard membership method. Checks if a given tuple is in the iterator.
+
+        Returns
+        -------
+        membership: bool
+            True if the iterator contains the member.
+
+        """
+        # Make it a tuple
+        if not isinstance(index, tuple):
+            index = (index,)
+        if len(index) != len(self._shape):
+            return False
+
+        # We can't check containement in self._it as it will traverse it.
+        # Do we need to check if we have already passed the value?
+        # If so, how? do we need to cache that state too?
+        # How would we even check?
+        # What happens if the slice is np.s_[::-1, ::1, ::-1, ::1]
+        # i.e. not strictly C or Fortran
+        #
+        # The python built-in function range doesn't behave like this.
+        # Range itself is just an object.
+        # __iter__ returns a seperate iterator.
+        # for loops are free to traverse that iterator.
+        # containement in that iterator is checked by traversal
+        # containment in range is not.
+        #
+        # I suggest I refactor all these addition into a new
+        # class `ndrange`. That classe's goals would be to behave more like
+        # python3 range
+        # At the same time, I would refactoro the first parameter and force
+        # the shape to be a tuple
+        """
+        In [11]: five = range(5)
+
+        In [12]: iter_five = five.__iter__()
+
+        In [13]: 3 in five
+        Out[13]: True
+
+        In [14]: 3 in five
+        Out[14]: True
+
+        In [15]: 3 in five
+        Out[15]: True
+
+        In [16]: 3 in iter_five
+        Out[16]: True
+
+        In [17]: 3 in iter_five
+        Out[17]: False
+
+        In [18]: iter_five = iter(five)
+
+        In [19]: 3 in iter_five
+        Out[19]: True
+
+        In [20]: 3 in iter_five
+        Out[20]: False
+        """
+
+        for i, range_indices in zip(index, self._range_indices):
+            if i not in range(*range_indices):
+                return False
+        else:
+            return True
+
+    def __reversed__(self):
+        """
+        Standard iteration reversal method. This is useful to generate an
+        Fortran ordered iterator.
+
+        """
+        return ndindex(self._shape, slices=self._slices,
+                       order=self._order, reverse=not self._reverse)
 
     next = __next__
 
