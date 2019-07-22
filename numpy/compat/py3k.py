@@ -104,6 +104,7 @@ def is_pathlib_path(obj):
 
     Prefer using `isinstance(obj, os_PathLike)` instead of this function.
     """
+    from pathlib import Path
     return Path is not None and isinstance(obj, Path)
 
 # from Python 3.7
