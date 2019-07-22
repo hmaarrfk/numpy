@@ -36,6 +36,7 @@ import sys
 from itertools import cycle
 
 from cpython.pycapsule cimport PyCapsule_New
+from fastrlock.rlock cimport create_fastrlock as Lock
 
 import numpy as np
 cimport numpy as np
@@ -497,7 +498,6 @@ cdef class BitGenerator():
     """
 
     def __init__(self, seed=None):
-        from threading import Lock
         self.lock = Lock()
         self._bitgen.state = <void *>0
         if type(self) is BitGenerator:
