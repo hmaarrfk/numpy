@@ -34,19 +34,6 @@ SOFTWARE.
 import abc
 import sys
 from itertools import cycle
-import re
-
-try:
-    from secrets import randbits
-except ImportError:
-    # secrets unavailable on python 3.5 and before
-    from random import SystemRandom
-    randbits = SystemRandom().getrandbits
-
-try:
-    from threading import Lock
-except ImportError:
-    from dummy_threading import Lock
 
 from cpython.pycapsule cimport PyCapsule_New
 
@@ -61,7 +48,12 @@ __all__ = ['SeedSequence', 'BitGenerator']
 
 np.import_array()
 
-DECIMAL_RE = re.compile(r'[0-9]+')
+from functools import lru_cache
+
+@lru_cache()
+def DECIMAL_RE():
+    import re
+    return re.compile(r'[0-9]+')
 
 cdef uint32_t DEFAULT_POOL_SIZE = 4  # Appears also in docstring for pool_size
 cdef uint32_t INIT_A = 0x43b0d7e5
@@ -141,7 +133,7 @@ def _coerce_to_uint32_array(x):
     elif isinstance(x, str):
         if x.startswith('0x'):
             x = int(x, base=16)
-        elif DECIMAL_RE.match(x):
+        elif DECIMAL_RE().match(x):
             x = int(x)
         else:
             raise ValueError("unrecognized seed string")
@@ -300,6 +292,7 @@ cdef class SeedSequence():
 
     def __init__(self, entropy=None, *, spawn_key=(),
                  pool_size=DEFAULT_POOL_SIZE, n_children_spawned=0):
+        from secrets import randbits
         if pool_size < DEFAULT_POOL_SIZE:
             raise ValueError("The size of the entropy pool should be at least "
                              f"{DEFAULT_POOL_SIZE}")
@@ -504,6 +497,7 @@ cdef class BitGenerator():
     """
 
     def __init__(self, seed=None):
+        from threading import Lock
         self.lock = Lock()
         self._bitgen.state = <void *>0
         if type(self) is BitGenerator:
