@@ -13,7 +13,7 @@ class Import(Benchmark):
     def execute(self, command):
         call((executable, '-c', command))
 
-    def time_numpy(self):
+    def time_import_numpy(self):
         self.execute('import numpy')
 
     def time_numpy_inspect(self):
