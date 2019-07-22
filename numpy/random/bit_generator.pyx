@@ -246,6 +246,11 @@ cdef class SeedlessSeedSequence():
 # we must register it after the fact.
 ISpawnableSeedSequence.register(SeedlessSeedSequence)
 
+# Taken from https://github.com/python/cpython/blob/3.7/Lib/secrets.py#L24
+# secret imports many things we don't need
+from random import SystemRandom
+_sysrand = SystemRandom()
+randbits = _sysrand.getrandbits
 
 cdef class SeedSequence():
     """
@@ -293,7 +298,6 @@ cdef class SeedSequence():
 
     def __init__(self, entropy=None, *, spawn_key=(),
                  pool_size=DEFAULT_POOL_SIZE, n_children_spawned=0):
-        from secrets import randbits
         if pool_size < DEFAULT_POOL_SIZE:
             raise ValueError("The size of the entropy pool should be at least "
                              f"{DEFAULT_POOL_SIZE}")
