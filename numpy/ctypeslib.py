@@ -355,7 +355,8 @@ if ctypes is not None:
             element_type.__module__ = None
         return element_type
 
-
+    from functools import lru_cache
+    @lru_cache()
     def _get_scalar_type_map():
         """
         Return a dictionary mapping native endian scalar dtype to ctypes types
@@ -370,15 +371,12 @@ if ctypes is not None:
         return {_dtype(ctype): ctype for ctype in simple_types}
 
 
-    _scalar_type_map = _get_scalar_type_map()
-
-
     def _ctype_from_dtype_scalar(dtype):
         # swapping twice ensure that `=` is promoted to <, >, or |
         dtype_with_endian = dtype.newbyteorder('S').newbyteorder('S')
         dtype_native = dtype.newbyteorder('=')
         try:
-            ctype = _scalar_type_map[dtype_native]
+            ctype = _get_scalar_type_map()[dtype_native]
         except KeyError:
             raise NotImplementedError(
                 "Converting {!r} to a ctypes type".format(dtype)

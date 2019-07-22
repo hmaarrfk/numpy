@@ -8,7 +8,6 @@ from __future__ import division, absolute_import, print_function
 
 import re
 import sys
-import platform
 
 from numpy.compat import unicode
 from .multiarray import dtype, array, ndarray
@@ -17,7 +16,6 @@ try:
 except ImportError:
     ctypes = None
 
-IS_PYPY = platform.python_implementation() == 'PyPy'
 
 if (sys.byteorder == 'little'):
     _nbo = b'<'
@@ -863,11 +861,15 @@ def _ufunc_doc_signature_formatter(ufunc):
 
 
 def npy_ctypes_check(cls):
+    import platform
+    IS_PYPY = platform.python_implementation() == 'PyPy'
+
     # determine if a class comes from ctypes, in order to work around
     # a bug in the buffer protocol for those objects, bpo-10746
     try:
         # ctypes class are new-style, so have an __mro__. This probably fails
         # for ctypes classes with multiple inheritance.
+
         if IS_PYPY:
             # (..., _ctypes.basics._CData, Bufferable, object)
             ctype_base = cls.__mro__[-3]
